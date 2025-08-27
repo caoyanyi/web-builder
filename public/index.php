@@ -10,13 +10,13 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 // 加载环境变量
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
-$dotenv->load();
+$dotenv->safeLoad();
 
 // 创建容器
 $container = new Container();
 
 // 配置容器
-$container->set('view', function () {
+$container->set(\Slim\Views\PhpRenderer::class, function () {
     return new \Slim\Views\PhpRenderer(__DIR__ . '/../templates');
 });
 
@@ -26,6 +26,7 @@ $app = AppFactory::create();
 
 // 添加中间件
 $app->addMiddleware(new \Slim\Middleware\MethodOverrideMiddleware());
+$app->addBodyParsingMiddleware();
 $app->addErrorMiddleware(true, true, true);
 
 // 设置路由
