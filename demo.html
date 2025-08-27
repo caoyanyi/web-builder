@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>可视化拖拽生成器 - 功能演示</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.bootcdn.net/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        .demo-section {
+            padding: 60px 0;
+        }
+        .feature-card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+            height: 100%;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        .code-preview {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .component-demo {
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            background: #fff;
+        }
+        .component-demo:hover {
+            border-color: #007bff;
+            background: #f0f8ff;
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-code-slash"></i> 可视化生成器演示
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="#features">功能特性</a>
+                <a class="nav-link" href="#demo">在线演示</a>
+                <a class="nav-link" href="#code">代码生成</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主标题区域 -->
+    <section class="demo-section" style="margin-top: 80px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+        <div class="container text-center">
+            <h1 class="display-4 fw-bold mb-4">可视化拖拽生成器</h1>
+            <p class="lead mb-5">快速创建微信小程序和H5网页，无需编写代码</p>
+            <div class="d-flex justify-content-center gap-3">
+                <a href="#demo" class="btn btn-light btn-lg px-4">
+                    <i class="bi bi-play-fill"></i> 开始体验
+                </a>
+                <a href="#features" class="btn btn-outline-light btn-lg px-4">
+                    <i class="bi bi-info-circle"></i> 了解更多
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- 功能特性 -->
+    <section id="features" class="demo-section">
+        <div class="container">
+            <div class="text-center mb-5">
+                <h2 class="display-5 fw-bold">强大功能</h2>
+                <p class="lead text-muted">拖拽式设计，一键生成代码</p>
+            </div>
+            
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="card feature-card text-center p-4">
+                        <div class="card-body">
+                            <i class="bi bi-mouse display-4 text-primary mb-3"></i>
+                            <h5 class="card-title">拖拽设计</h5>
+                            <p class="card-text">直观的拖拽界面，轻松设计页面布局和组件，无需编写代码</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="card feature-card text-center p-4">
+                        <div class="card-body">
+                            <i class="bi bi-phone display-4 text-success mb-3"></i>
+                            <h5 class="card-title">多平台支持</h5>
+                            <p class="card-text">同时支持微信小程序和H5网页开发，一套设计多端适配</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="card feature-card text-center p-4">
+                        <div class="card-body">
+                            <i class="bi bi-code-slash display-4 text-warning mb-3"></i>
+                            <h5 class="card-title">代码生成</h5>
+                            <p class="card-text">自动生成完整的项目代码，包含所有必要的文件，可直接使用</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 在线演示 -->
+    <section id="demo" class="demo-section bg-light">
+        <div class="container">
+            <div class="text-center mb-5">
+                <h2 class="display-5 fw-bold">在线演示</h2>
+                <p class="lead text-muted">体验拖拽式设计界面</p>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-4">
+                    <h5>组件库</h5>
+                    <div class="component-demo" draggable="true" data-component="text">
+                        <i class="bi bi-type"></i> 文本组件
+                    </div>
+                    <div class="component-demo" draggable="true" data-component="image">
+                        <i class="bi bi-image"></i> 图片组件
+                    </div>
+                    <div class="component-demo" draggable="true" data-component="button">
+                        <i class="bi bi-box"></i> 按钮组件
+                    </div>
+                    <div class="component-demo" draggable="true" data-component="div">
+                        <i class="bi bi-square"></i> 容器组件
+                    </div>
+                </div>
+                
+                <div class="col-md-8">
+                    <h5>设计画布</h5>
+                    <div class="component-demo" id="canvas" style="min-height: 300px;">
+                        <div class="text-center text-muted py-5">
+                            <i class="bi bi-arrow-down-circle display-4"></i>
+                            <p class="mt-3">拖拽组件到这里开始构建页面</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 代码生成演示 -->
+    <section id="code" class="demo-section">
+        <div class="container">
+            <div class="div class="text-center mb-5">
+                <h2 class="display-5 fw-bold">代码生成</h2>
+                <p class="lead text-muted">自动生成完整的项目代码</p>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>微信小程序代码</h5>
+                    <div class="code-preview">
+                        <div class="text-muted mb-2">app.js</div>
+                        <pre><code>App({
+  globalData: {
+    userInfo: null
+  },
+  onLaunch() {
+    console.log("小程序启动");
+  }
+})</code></pre>
+                        
+                        <div class="text-muted mb-2 mt-3">页面结构</div>
+                        <pre><code>&lt;view class="container"&gt;
+  &lt;text class="welcome-text"&gt;欢迎使用&lt;/text&gt;
+  &lt;button class="btn-primary"&gt;点击我&lt;/button&gt;
+&lt;/view&gt;</code></pre>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <h5>H5网页代码</h5>
+                    <div class="code-preview">
+                        <div class="text-muted mb-2">HTML结构</div>
+                        <pre><code>&lt;!DOCTYPE html&gt;
+&lt;html lang="zh-CN"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;H5页面&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div class="container"&gt;
+    &lt;p class="welcome-text"&gt;欢迎使用&lt;/p&gt;
+    &lt;button class="btn-primary"&gt;点击我&lt;/button&gt;
+  &lt;/div&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+                        
+                        <div class="text-muted mb-2 mt-3">CSS样式</div>
+                        <pre><code>.welcome-text {
+  font-size: 24px;
+  color: #333;
+}
+.btn-primary {
+  background: #007bff;
+  color: white;
+}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 技术架构 -->
+    <section class="demo-section bg-light">
+        <div class="container">
+            <div class="text-center mb-5">
+                <h2 class="display-5 fw-bold">技术架构</h2>
+                <p class="lead text-muted">基于现代化的技术栈</p>
+            </div>
+            
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="bi bi-server text-primary"></i> 后端技术
+                            </h5>
+                            <ul class="list-unstyled">
+                                <li><i class="bi bi-check-circle text-success"></i> PHP 7.4+</li>
+                                <li><i class="bi bi-check-circle text-success"></i> Slim Framework 4</li>
+                                <li><i class="bi bi-check-circle text-success"></i> 依赖注入容器</li>
+                                <li><i class="bi bi-check-circle text-success"></i> RESTful API</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="bi bi-window text-primary"></i> 前端技术
+                            </h5>
+                            <ul class="list-unstyled">
+                                <li><i class="bi bi-check-circle text-success"></i> Vue.js 3</i>
+                                <li><i class="bi bi-check-circle text-success"></i> Bootstrap 5</li>
+                                <li><i class="bi bi-check-circle text-success"></i> HTML5 Drag & Drop</li>
+                                <li><i class="bi bi-check-circle text-success"></i> 响应式设计</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 页脚 -->
+    <footer class="bg-dark text-light py-4">
+        <div class="container text-center">
+            <p class="mb-0">&copy; 2024 可视化拖拽生成器. 保留所有权利.</p>
+        </div>
+    </footer>
+
+    <script src="/public/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 简单的拖拽演示
+        document.addEventListener('DOMContentLoaded', function() {
+            const canvas = document.getElementById('canvas');
+            const components = document.querySelectorAll('[data-component]');
+            
+            // 拖拽开始
+            components.forEach(component => {
+                component.addEventListener('dragstart', function(e) {
+                    e.dataTransfer.setData('text/plain', this.dataset.component);
+                });
+            });
+            
+            // 拖拽悬停
+            canvas.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                this.style.borderColor = '#007bff';
+                this.style.background = '#f0f8ff';
+            });
+            
+            // 拖拽离开
+            canvas.addEventListener('dragleave', function(e) {
+                this.style.borderColor = '#dee2e6';
+                this.style.background = '#fff';
+            });
+            
+            // 拖拽放置
+            canvas.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.style.borderColor = '#dee2e6';
+                this.style.background = '#fff';
+                
+                const componentType = e.dataTransfer.getData('text/plain');
+                addComponent(componentType);
+            });
+            
+            function addComponent(type) {
+                const component = createComponent(type);
+                canvas.appendChild(component);
+                
+                // 清空提示
+                const placeholder = canvas.querySelector('.text-muted');
+                if (placeholder) {
+                    placeholder.remove();
+                }
+            }
+            
+            function createComponent(type) {
+                const div = document.createElement('div');
+                div.className = 'component-demo mb-2';
+                div.style.position = 'relative';
+                
+                let content = '';
+                switch(type) {
+                    case 'text':
+                        content = '<i class="bi bi-type"></i> 文本内容';
+                        break;
+                    case 'image':
+                        content = '<i class="bi bi-image"></i> 图片组件';
+                        break;
+                    case 'button':
+                        content = '<i class="bi bi-box"></i> 按钮组件';
+                        break;
+                    case 'div':
+                        content = '<i class="bi bi-square"></i> 容器组件';
+                        break;
+                }
+                
+                div.innerHTML = content + '<button class="btn btn-sm btn-danger position-absolute top-0 end-0" onclick="this.parentElement.remove()">×</button>';
+                return div;
+            }
+        });
+    </script>
+</body>
+</html>
