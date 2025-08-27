@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>拖拽构建器 - 可视化生成器</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link href="vendor/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="vendor/vue/vue.global.prod.js"></script>
     <style>
         .builder-container {
             height: 100vh;
@@ -254,9 +254,52 @@
                 </div>
             </div>
         </div>
+
+    <!-- 预览模态框 -->
+    <div class="modal fade" id="previewModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">项目预览（H5）</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="border rounded p-3" style="max-height:60vh;overflow:auto" v-html="previewHtml"></div>
+                    <div v-if="!hasPreview" class="text-muted small mt-2">暂无内容，请在画布添加组件后再试</div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- 代码生成模态框 -->
+    <div class="modal fade" id="codeModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">生成代码</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs" role="tablist">
+                        <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#wechatTab">微信小程序</a></li>
+                        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#h5Tab">H5</a></li>
+                    </ul>
+                    <div class="tab-content mt-3">
+                        <div class="tab-pane fade show active" id="wechatTab">
+                            <pre class="bg-light p-3 rounded" style="max-height:60vh;overflow:auto"><code v-text="wechatCode"></code></pre>
+                        </div>
+                        <div class="tab-pane fade" id="h5Tab">
+                            <pre class="bg-light p-3 rounded" style="max-height:60vh;overflow:auto"><code v-text="h5Code"></code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    </div> <!-- 关闭 #app 容器 -->
+
+    <script src="vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script>
         const { createApp } = Vue;
 
@@ -294,7 +337,9 @@
                     currentPage: {
                         name: 'home',
                         title: '首页',
-                        elements: []
+                        elements: [
+                            { id: Date.now(), type: 'text', props: { content: '欢迎使用可视化生成器', class: '', style: 'font-size:16px;color:#333;' }, children: [] }
+                        ]
                     },
                     selectedElement: null,
                     basicComponents: [
@@ -304,7 +349,11 @@
                     ],
                     layoutComponents: [
                         { type: 'div', name: '容器', icon: 'bi bi-square' }
-                    ]
+                    ],
+                    previewHtml: '',
+                    wechatCode: '',
+                    h5Code: '',
+                    hasPreview: false
                 };
             },
             methods: {
@@ -389,12 +438,41 @@
                     }
                 },
                 
-                previewProject() {
-                    alert('预览功能开发中...');
+                async previewProject() {
+                    try {
+                        const res = await fetch('/api/preview', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ type: 'h5', config: { pages: [this.currentPage] } })
+                        });
+                        const json = await res.json();
+                        if (json.success) {
+                            this.previewHtml = json.code || '';
+                            this.hasPreview = /<([A-Za-z][\w\-]*)\b|\S/.test(this.previewHtml);
+                            new bootstrap.Modal(document.getElementById('previewModal')).show();
+                        } else {
+                            alert(json.message || '预览失败');
+                        }
+                    } catch (e) {
+                        console.error(e); alert('预览失败');
+                    }
                 },
                 
-                generateCode() {
-                    alert('代码生成功能开发中...');
+                async generateCode() {
+                    try {
+                        const payload = { config: { pages: [this.currentPage] } };
+                        const [wechatRes, h5Res] = await Promise.all([
+                            fetch('/api/generate/wechat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+                            fetch('/api/generate/h5', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+                        ]);
+                        const wechatJson = await wechatRes.json();
+                        const h5Json = await h5Res.json();
+                        this.wechatCode = wechatJson.success ? JSON.stringify(wechatJson.code, null, 2) : (wechatJson.message || '生成失败');
+                        this.h5Code = h5Json.success ? JSON.stringify(h5Json.code, null, 2) : (h5Json.message || '生成失败');
+                        new bootstrap.Modal(document.getElementById('codeModal')).show();
+                    } catch (e) {
+                        console.error(e); alert('生成失败');
+                    }
                 }
             }
         }).mount('#app');

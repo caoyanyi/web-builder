@@ -172,12 +172,12 @@ CSS;
         $pages = $config['pages'] ?? [];
         $pageData = json_encode($pages, JSON_UNESCAPED_UNICODE);
         
-        return <<<JS
+        $template = <<<'JS'
 // 主应用逻辑
 class App {
     constructor() {
         this.currentPage = null;
-        this.pages = {$pageData};
+        this.pages = __PAGE_DATA__;
         this.init();
     }
     
@@ -212,7 +212,7 @@ class App {
     }
     
     generatePageHtml(page) {
-        let html = `<div class=\"page\" id=\"page-${page.name}\">`;
+        let html = `<div class="page" id="page-${page.name}">`;
         
         if (page.elements) {
             page.elements.forEach(element => {
@@ -230,19 +230,19 @@ class App {
         switch (type) {
             case 'div':
                 const children = element.children ? element.children.map(child => this.generateElementHtml(child)).join('') : '';
-                return `<div class=\"${props.class || ''}\" style=\"${props.style || ''}\">${children}</div>`;
+                return `<div class="${props.class || ''}" style="${props.style || ''}">${children}</div>`;
                 
             case 'text':
-                return `<p class=\"${props.class || ''}\" style=\"${props.style || ''}\">${props.content || ''}</p>`;
+                return `<p class="${props.class || ''}" style="${props.style || ''}">${props.content || ''}</p>`;
                 
             case 'image':
-                return `<img src=\"${props.src || ''}\" class=\"${props.class || ''}\" style=\"${props.style || ''}\" alt=\"${props.alt || ''}\">`;
+                return `<img src="${props.src || ''}" class="${props.class || ''}" style="${props.style || ''}" alt="${props.alt || ''}">`;
                 
             case 'button':
-                return `<button class=\"${props.class || ''}\" style=\"${props.style || ''}\" onclick=\"${props.onclick || ''}\">${props.text || '按钮'}</button>`;
+                return `<button class="${props.class || ''}" style="${props.style || ''}" onclick="${props.onclick || ''}">${props.text || '按钮'}</button>`;
                 
             case 'form':
-                return `<form class=\"${props.class || ''}\" style=\"${props.style || ''}\">${props.content || ''}</form>`;
+                return `<form class="${props.class || ''}" style="${props.style || ''}">${props.content || ''}</form>`;
                 
             default:
                 return `<!-- 未知元素类型: ${type} -->`;
@@ -276,6 +276,8 @@ document.addEventListener('DOMContentLoaded', () => {
     window.app = new App();
 });
 JS;
+
+        return str_replace('__PAGE_DATA__', $pageData, $template);
     }
     
     private function generatePageHtml($page)
