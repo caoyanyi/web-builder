@@ -48,7 +48,9 @@ class H5CodeGenerator
         $previewCode = '';
         
         foreach ($pages as $page) {
-            $previewCode .= $this->generatePageHtml($page);
+            // 确保保留原始元素顺序，使用json_encode和json_decode强制保持数组结构
+            $preservedPage = json_decode(json_encode($page), true);
+            $previewCode .= $this->generatePageHtml($preservedPage);
         }
         
         return $previewCode;
@@ -328,13 +330,24 @@ JS;
         
         switch ($type) {
             case 'div':
-                $class = $props['class'] ?? '';
-                $style = $props['style'] ?? '';
+                $class = $props['class'] ?? 'border-primary bg-white';
+                $style = $props['style'] ?? 'min-height: 60px;';
                 $childrenHtml = '';
                 foreach ($children as $child) {
                     $childrenHtml .= $this->generateElementHtml($child);
                 }
-                return "    <div class=\"{$class}\" style=\"{$style}\">\n{$childrenHtml}    </div>\n";
+                $emptyContent = empty($children) ? '        <div class="text-muted text-sm w-100 text-center py-2">拖拽组件到此处</div>' : '';
+                return "    <div class='w-100 p-3 border relative {$class}' style='{$style}'>\n  <div class='w-100 mt-4'>\n{$emptyContent}\n{$childrenHtml}        </div>\n    </div>\n";
+                
+            case 'row':
+                $class = $props['class'] ?? 'border-info bg-white';
+                $style = $props['style'] ?? 'min-height: 60px; gap: 8px;';
+                $childrenHtml = '';
+                foreach ($children as $child) {
+                    $childrenHtml .= $this->generateElementHtml($child);
+                }
+                $emptyContent = empty($children) ? '        <div class="text-muted text-sm w-100 text-center py-2">拖拽组件到此处</div>' : '';
+                return "    <div class='w-100 d-flex flex-wrap p-3 border relative {$class}' style='{$style}'>\n       <div class='w-100 mt-4'>\n{$emptyContent}\n{$childrenHtml}        </div>\n    </div>\n";
                 
             case 'text':
                 $content = $props['content'] ?? '';
