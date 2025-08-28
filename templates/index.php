@@ -6,26 +6,7 @@
     <title>可视化拖拽生成器 - 微信小程序和H5网页</title>
     <link href="vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="vendor/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
-    <style>
-        .hero-section {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 100px 0;
-        }
-        .feature-card {
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-            transition: transform 0.3s ease;
-        }
-        .feature-card:hover {
-            transform: translateY(-5px);
-        }
-        .feature-icon {
-            font-size: 3rem;
-            color: #667eea;
-        }
-    </style>
+    <link href="css/index.css" rel="stylesheet">
 </head>
 <body>
     <!-- 导航栏 -->
@@ -179,7 +160,7 @@
     <!-- 页脚 -->
     <footer class="bg-dark text-light py-4">
         <div class="container text-center">
-            <p class="mb-0">&copy; 2024 可视化拖拽生成器. 保留所有权利.</p>
+            <p class="mb-0">&copy; <?php echo date('Y'); ?> 可视化拖拽生成器. 保留所有权利.</p>
         </div>
     </footer>
 
