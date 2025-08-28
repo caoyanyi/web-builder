@@ -48,9 +48,13 @@
 ### 安装步骤
 
 1. 克隆项目
+
+## 许可证
+
+本项目采用 MIT 许可证开源。详情请参阅 [LICENSE](LICENSE) 文件。
 ```bash
-git clone <repository-url>
-cd visual-builder
+git clone https://github.com/caoyanyi/web-builder.git
+cd web-builder
 ```
 
 2. 安装依赖
