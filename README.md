@@ -1,157 +1,177 @@
 # 可视化拖拽生成器
 
-一个基于PHP和Vue.js的可视化拖拽生成器，支持生成微信小程序和H5网页的完整代码。
+一个基于 PHP 和 Vue 3 的可视化页面构建工具，支持通过拖拽方式搭建页面，并生成 H5 页面与微信小程序代码。
 
-## 功能特性
+## 当前能力
 
-- 🎨 **拖拽式设计界面** - 直观的拖拽操作，轻松设计页面布局
-- 📱 **多平台支持** - 同时支持微信小程序和H5网页开发
-- 🔧 **组件库** - 丰富的预置组件，包括基础组件、布局组件、表单组件
-- 👀 **实时预览** - 支持实时预览设计效果
-- 💻 **代码生成** - 自动生成完整的项目代码，可直接使用
-- 📁 **项目管理** - 支持保存、编辑、删除项目
+- 拖拽文本、图片、按钮、输入框、文本域、间距块、容器、行布局组件到画布
+- 支持容器嵌套，适合搭建卡片区、分栏区和内容模块
+- 支持多页面编辑、页面切换和页面标识管理
+- 支持组件复制、上下排序、撤销和重做
+- 支持组件在根画布和容器之间拖拽移动，也支持拖拽插入排序
+- 支持桌面 / 平板 / 手机尺寸切换预览
+- 属性面板会按组件类型提供快捷配置
+- 支持项目 JSON 导入与导出
+- 支持直接导出 H5 / 微信小程序 ZIP 压缩包
+- 支持实时预览 H5 结构
+- 支持同时生成 H5 和微信小程序代码
+- 支持项目保存、加载、更新和删除
+- 项目数据默认保存在 `database/projects.json`
 
-## 技术架构
+## 技术栈
 
-### 后端技术
+### 后端
+
 - PHP 7.4+
 - Slim Framework 4
-- 依赖注入容器 (PHP-DI)
-- RESTful API设计
+- PHP-DI
+- `slim/php-view`
 
-### 前端技术
+### 前端
+
 - Vue.js 3
 - Bootstrap 5
-- HTML5 + CSS3
-- 拖拽交互 (HTML5 Drag & Drop API)
+- HTML5 Drag and Drop API
 
 ## 项目结构
 
-```
-├── src/                    # PHP源代码
-│   ├── Controllers/       # 控制器
-│   ├── Models/           # 数据模型
-│   └── Services/         # 业务服务
-├── templates/             # 页面模板
-├── public/               # 公共资源
-├── database/             # 数据库文件
-├── composer.json         # 依赖配置
-└── README.md            # 项目说明
+```text
+├── database/              # 项目数据存储目录，运行后会生成 projects.json
+├── public/                # Web 入口、静态资源、前端脚本
+├── src/
+│   ├── Controllers/       # 页面与 API 控制器
+│   ├── Models/            # 文件存储模型
+│   └── Services/          # H5 / 微信代码生成服务
+├── templates/             # PHP 页面模板
+├── composer.json          # Composer 依赖与启动脚本
+└── README.md
 ```
 
-## 安装说明
+## 环境要求
 
-### 环境要求
 - PHP 7.4 或更高版本
 - Composer
 
-### 安装步骤
+## 安装与启动
 
 1. 克隆项目
 
-## 许可证
-
-本项目采用 MIT 许可证开源。详情请参阅 [LICENSE](LICENSE) 文件。
 ```bash
 git clone https://github.com/caoyanyi/web-builder.git
 cd web-builder
 ```
 
 2. 安装依赖
+
 ```bash
 composer install
 ```
 
 3. 配置环境
+
+项目使用了 `phpdotenv` 的 `safeLoad()`，因此没有 `.env` 也可以启动。  
+如果你需要自定义环境变量，可以复制示例文件：
+
 ```bash
 cp .env.example .env
-# 编辑 .env 文件配置数据库等信息
 ```
 
 4. 启动开发服务器
+
 ```bash
 composer start
-# 或者
+```
+
+也可以直接运行：
+
+```bash
 php -S localhost:8000 -t public
 ```
 
 5. 访问应用
+
 打开浏览器访问 `http://localhost:8000`
 
 ## 使用说明
 
-### 1. 创建项目
-- 访问首页，点击"开始构建"
-- 进入拖拽构建器界面
+### 1. 进入构建器
 
-### 2. 设计页面
-- 从左侧组件库拖拽组件到画布
-- 点击组件编辑属性
-- 调整样式和布局
+- 访问首页并进入 `/builder`
+- 在左侧选择组件并拖到中间画布
 
-### 3. 预览效果
-- 点击"预览"按钮查看效果
-- 实时查看设计结果
+### 2. 编辑页面
 
-### 4. 生成代码
-- 点击"生成代码"按钮
-- 选择目标平台（微信小程序或H5）
-- 下载生成的代码文件
+- 顶部和中部区域可以查看当前页面数量与组件数量
+- 中部支持新增页面、切换页面、删除页面、清空页面
+- 右侧可以编辑页面标题、页面标识和组件属性
 
-## 组件说明
+### 3. 管理项目
+
+- 左侧输入项目名称并点击“保存项目”
+- 保存后会出现在“已保存项目”列表
+- 可以从列表中直接加载或删除项目
+
+### 4. 预览与生成代码
+
+- 点击“预览”可查看当前项目的 H5 预览结构
+- 点击“生成代码”可同时查看 H5 与微信小程序代码输出
+- 点击顶部导出按钮可直接下载 H5 或微信小程序 ZIP 压缩包
+
+## 当前支持的组件
 
 ### 基础组件
-- **文本组件** - 显示文本内容
-- **图片组件** - 显示图片
-- **按钮组件** - 交互按钮
 
-### 布局组件
-- **容器组件** - 布局容器，可包含其他组件
+- 文本 `text`
+- 图片 `image`
+- 按钮 `button`
 
 ### 表单组件
-- **表单组件** - 完整的表单结构
 
-## API接口
+- 输入框 `input`
+- 文本域 `textarea`
+- 间距块 `spacer`
+
+### 布局组件
+
+- 容器 `div`
+- 行布局 `row`
+
+## API
 
 ### 项目管理
-- `POST /api/projects` - 创建项目
-- `GET /api/projects/{id}` - 获取项目
-- `PUT /api/projects/{id}` - 更新项目
-- `DELETE /api/projects/{id}` - 删除项目
+
+- `GET /api/projects` 获取项目列表
+- `POST /api/projects` 创建项目
+- `GET /api/projects/{id}` 获取项目详情
+- `PUT /api/projects/{id}` 更新项目
+- `DELETE /api/projects/{id}` 删除项目
 
 ### 代码生成
-- `POST /api/generate/wechat` - 生成微信小程序代码
-- `POST /api/generate/h5` - 生成H5代码
-- `POST /api/preview` - 预览项目
+
+- `POST /api/generate/wechat` 生成微信小程序代码
+- `POST /api/generate/h5` 生成 H5 代码
+- `POST /api/preview` 生成 H5 预览内容
 
 ## 开发说明
 
 ### 添加新组件
-1. 在 `src/Services/` 中的代码生成器添加组件支持
-2. 在前端模板中添加组件定义
-3. 实现组件的渲染逻辑
 
-### 自定义样式
-- 编辑 `templates/` 中的CSS样式
-- 修改Bootstrap主题变量
-- 添加自定义组件样式
+1. 在 [`public/js/builder.js`](public/js/builder.js) 中补充组件定义、默认属性和前端渲染逻辑
+2. 在 `src/Services/H5CodeGenerator.php` 中补充 H5 输出逻辑
+3. 在 `src/Services/WechatCodeGenerator.php` 中补充微信小程序输出逻辑
 
-## 贡献指南
+### 项目存储
 
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 打开 Pull Request
+- 当前项目存储为本地 JSON 文件，不依赖数据库服务
+- 默认文件路径为 `database/projects.json`
+- 如需接入数据库，可从 `src/Models/Project.php` 开始替换存储实现
+
+## 当前已知限制
+
+- 生成结果目前主要用于结构化输出和开发起点，尚未包含完整工程打包下载能力
+- 组件事件和复杂交互还比较基础，适合先完成页面结构搭建
+- 项目保存依赖后端接口，因此首次运行前必须先执行 `composer install`
 
 ## 许可证
 
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
-
-## 联系方式
-
-如有问题或建议，请提交 Issue 或联系开发团队。
-
----
-
-**注意**: 这是一个开发中的项目，部分功能可能仍在开发中。欢迎提供反馈和建议！
+本项目采用 MIT 许可证，详见 [LICENSE](LICENSE)。
