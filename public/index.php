@@ -32,12 +32,14 @@ $app->addErrorMiddleware(true, true, true);
 // 设置路由
 $app->get('/', [BuilderController::class, 'index']);
 $app->get('/builder', [BuilderController::class, 'builder']);
+$app->get('/api/projects', [ProjectController::class, 'index']);
 $app->post('/api/projects', [ProjectController::class, 'create']);
 $app->get('/api/projects/{id}', [ProjectController::class, 'get']);
 $app->put('/api/projects/{id}', [ProjectController::class, 'update']);
 $app->delete('/api/projects/{id}', [ProjectController::class, 'delete']);
 $app->post('/api/generate/wechat', [CodeGeneratorController::class, 'generateWechat']);
 $app->post('/api/generate/h5', [CodeGeneratorController::class, 'generateH5']);
+$app->post('/api/export/{type}', [CodeGeneratorController::class, 'exportBundle']);
 $app->post('/api/preview', [CodeGeneratorController::class, 'preview']);
 
 // 运行应用

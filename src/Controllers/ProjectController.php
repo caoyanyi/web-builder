@@ -2,102 +2,123 @@
 
 namespace App\Controllers;
 
+use App\Models\Project;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
-use App\Models\Project;
 
 class ProjectController
 {
+    public function index(Request $request, Response $response): Response
+    {
+        $projects = array_map(
+            function (Project $project) {
+                return $project->toArray();
+            },
+            Project::all()
+        );
+
+        return $this->json($response, [
+            'success' => true,
+            'data' => $projects,
+        ]);
+    }
+
     public function create(Request $request, Response $response): Response
     {
-        $data = $request->getParsedBody();
-        
+        $data = $this->getRequestData($request);
+
         $project = new Project();
         $project->name = $data['name'] ?? '未命名项目';
         $project->type = $data['type'] ?? 'h5';
-        $project->config = json_encode($data['config'] ?? []);
-        $project->created_at = date('Y-m-d H:i:s');
-        
+        $project->config = $data['config'] ?? [];
+
         $projectId = $project->save();
-        
-        $response->getBody()->write(json_encode([
+
+        return $this->json($response, [
             'success' => true,
             'id' => $projectId,
-            'message' => '项目创建成功'
-        ]));
-        
-        return $response->withHeader('Content-Type', 'application/json');
+            'data' => $project->toArray(),
+            'message' => '项目创建成功',
+        ]);
     }
 
     public function get(Request $request, Response $response, array $args): Response
     {
-        $id = $args['id'];
-        $project = Project::find($id);
-        
+        $project = Project::find($args['id']);
+
         if (!$project) {
-            $response->getBody()->write(json_encode([
+            return $this->json($response, [
                 'success' => false,
-                'message' => '项目不存在'
-            ]));
-            return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+                'message' => '项目不存在',
+            ], 404);
         }
-        
-        $response->getBody()->write(json_encode([
+
+        return $this->json($response, [
             'success' => true,
-            'data' => $project
-        ]));
-        
-        return $response->withHeader('Content-Type', 'application/json');
+            'data' => $project->toArray(),
+        ]);
     }
 
     public function update(Request $request, Response $response, array $args): Response
     {
-        $id = $args['id'];
-        $data = $request->getParsedBody();
-        
-        $project = Project::find($id);
+        $project = Project::find($args['id']);
+
         if (!$project) {
-            $response->getBody()->write(json_encode([
+            return $this->json($response, [
                 'success' => false,
-                'message' => '项目不存在'
-            ]));
-            return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+                'message' => '项目不存在',
+            ], 404);
         }
-        
+
+        $data = $this->getRequestData($request);
+
         $project->name = $data['name'] ?? $project->name;
-        $project->config = json_encode($data['config'] ?? []);
-        $project->updated_at = date('Y-m-d H:i:s');
-        
+        $project->type = $data['type'] ?? $project->type;
+        $project->config = isset($data['config']) && is_array($data['config'])
+            ? $data['config']
+            : $project->config;
+
         $project->save();
-        
-        $response->getBody()->write(json_encode([
+
+        return $this->json($response, [
             'success' => true,
-            'message' => '项目更新成功'
-        ]));
-        
-        return $response->withHeader('Content-Type', 'application/json');
+            'data' => $project->toArray(),
+            'message' => '项目更新成功',
+        ]);
     }
 
     public function delete(Request $request, Response $response, array $args): Response
     {
-        $id = $args['id'];
-        $project = Project::find($id);
-        
+        $project = Project::find($args['id']);
+
         if (!$project) {
-            $response->getBody()->write(json_encode([
+            return $this->json($response, [
                 'success' => false,
-                'message' => '项目不存在'
-            ]));
-            return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+                'message' => '项目不存在',
+            ], 404);
         }
-        
+
         $project->delete();
-        
-        $response->getBody()->write(json_encode([
+
+        return $this->json($response, [
             'success' => true,
-            'message' => '项目删除成功'
-        ]));
-        
-        return $response->withHeader('Content-Type', 'application/json');
+            'message' => '项目删除成功',
+        ]);
+    }
+
+    private function getRequestData(Request $request): array
+    {
+        $data = $request->getParsedBody();
+
+        return is_array($data) ? $data : [];
+    }
+
+    private function json(Response $response, array $payload, int $status = 200): Response
+    {
+        $response->getBody()->write(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        return $response
+            ->withStatus($status)
+            ->withHeader('Content-Type', 'application/json');
     }
 }
