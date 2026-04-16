@@ -390,9 +390,11 @@ createApp({
         };
     },
     computed: {
+        safePages() {
+            return Array.isArray(this.pages) ? this.pages : [];
+        },
         currentPage() {
-            const pages = Array.isArray(this.pages) ? this.pages : [];
-            const page = pages.find((item) => item.id === this.currentPageId) || pages[0];
+            const page = this.safePages.find((item) => item.id === this.currentPageId) || this.safePages[0];
 
             if (!page) {
                 return {
@@ -409,12 +411,24 @@ createApp({
 
             return page;
         },
+        currentPageElements() {
+            return Array.isArray(this.currentPage.elements) ? this.currentPage.elements : [];
+        },
+        safeSavedProjects() {
+            return Array.isArray(this.savedProjects) ? this.savedProjects : [];
+        },
+        pageCount() {
+            return this.safePages.length;
+        },
+        currentElementCount() {
+            return this.currentPageElements.length;
+        },
         selectedElement() {
             if (!this.selectedElementId || !this.currentPage) {
                 return null;
             }
 
-            return this.findElementById(this.currentPage.elements, this.selectedElementId);
+            return this.findElementById(this.currentPageElements, this.selectedElementId);
         },
         editablePropFields() {
             if (!this.selectedElement || !this.selectedElement.props) {
@@ -796,7 +810,7 @@ createApp({
                 };
             }
 
-            const sourceLocation = this.findElementLocation(this.currentPage.elements, dragPayload.elementId);
+            const sourceLocation = this.findElementLocation(this.currentPageElements, dragPayload.elementId);
 
             if (!sourceLocation) {
                 return null;
@@ -835,13 +849,13 @@ createApp({
         resolveDestination(destination) {
             if (destination.mode === 'append-root') {
                 return {
-                    list: this.currentPage.elements,
-                    index: this.currentPage.elements.length
+                    list: this.currentPageElements,
+                    index: this.currentPageElements.length
                 };
             }
 
             if (destination.mode === 'append-container') {
-                const container = this.findElementById(this.currentPage.elements, destination.targetId);
+                const container = this.findElementById(this.currentPageElements, destination.targetId);
 
                 if (!container || !isContainerType(container.type)) {
                     this.setStatus('目标位置不是有效容器。', 'danger');
@@ -859,7 +873,7 @@ createApp({
             }
 
             if (destination.mode === 'insert-relative') {
-                const location = this.findElementLocation(this.currentPage.elements, destination.targetId);
+                const location = this.findElementLocation(this.currentPageElements, destination.targetId);
 
                 if (!location) {
                     return null;
@@ -1065,7 +1079,7 @@ createApp({
             reader.readAsDataURL(file);
         },
         removeElement(elementId) {
-            const location = this.findElementLocation(this.currentPage.elements, elementId);
+            const location = this.findElementLocation(this.currentPageElements, elementId);
 
             if (!location) {
                 return;
@@ -1084,7 +1098,7 @@ createApp({
             this.setStatus('组件已删除。', 'warning');
         },
         duplicateElement(elementId) {
-            const location = this.findElementLocation(this.currentPage.elements, elementId);
+            const location = this.findElementLocation(this.currentPageElements, elementId);
 
             if (!location) {
                 return;
@@ -1097,7 +1111,7 @@ createApp({
             this.setStatus('组件已复制。', 'success');
         },
         moveElement({ elementId, offset }) {
-            const location = this.findElementLocation(this.currentPage.elements, elementId);
+            const location = this.findElementLocation(this.currentPageElements, elementId);
 
             if (!location) {
                 return;
@@ -1115,15 +1129,15 @@ createApp({
             this.setStatus('组件顺序已调整。', 'info');
         },
         addPage() {
-            const title = this.newPageTitle || `页面 ${this.pages.length + 1}`;
+            const title = this.newPageTitle || `页面 ${this.safePages.length + 1}`;
             const page = {
                 id: createId('page'),
                 title,
-                name: this.createUniquePageName(title, this.pages.length + 1),
+                name: this.createUniquePageName(title, this.safePages.length + 1),
                 elements: []
             };
 
-            this.pages.push(page);
+            this.safePages.push(page);
             this.currentPageId = page.id;
             this.selectedElementId = null;
             this.newPageTitle = '';
@@ -1131,7 +1145,7 @@ createApp({
             this.setStatus(`已创建页面“${page.title}”。`, 'success');
         },
         duplicateCurrentPage() {
-            const pageIndex = this.pages.findIndex((page) => page.id === this.currentPageId);
+            const pageIndex = this.safePages.findIndex((page) => page.id === this.currentPageId);
             const sourcePage = this.currentPage;
             const duplicatePage = {
                 id: createId('page'),
@@ -1140,7 +1154,7 @@ createApp({
                 elements: sourcePage.elements.map((element) => this.cloneElementWithNewIds(element))
             };
 
-            this.pages.splice(pageIndex + 1, 0, duplicatePage);
+            this.safePages.splice(pageIndex + 1, 0, duplicatePage);
             this.currentPageId = duplicatePage.id;
             this.selectedElementId = null;
             this.captureHistory();
@@ -1151,7 +1165,7 @@ createApp({
             this.selectedElementId = null;
         },
         deleteCurrentPage() {
-            if (this.pages.length === 1) {
+            if (this.safePages.length === 1) {
                 this.currentPage.elements = [];
                 this.selectedElementId = null;
                 this.captureHistory();
@@ -1159,19 +1173,19 @@ createApp({
                 return;
             }
 
-            const currentIndex = this.pages.findIndex((page) => page.id === this.currentPageId);
+            const currentIndex = this.safePages.findIndex((page) => page.id === this.currentPageId);
             const currentTitle = this.currentPage.title;
 
-            this.pages.splice(currentIndex, 1);
+            this.safePages.splice(currentIndex, 1);
 
-            const nextPage = this.pages[Math.max(0, currentIndex - 1)] || this.pages[0];
+            const nextPage = this.safePages[Math.max(0, currentIndex - 1)] || this.safePages[0];
             this.currentPageId = nextPage.id;
             this.selectedElementId = null;
             this.captureHistory();
             this.setStatus(`已删除页面“${currentTitle}”。`, 'warning');
         },
         clearCanvas() {
-            if (this.currentPage.elements.length === 0) {
+            if (this.currentPageElements.length === 0) {
                 this.setStatus('当前页面已经是空白状态。', 'info');
                 return;
             }
@@ -1223,7 +1237,7 @@ createApp({
 
             return {
                 title: this.projectName || '未命名项目',
-                pages: this.pages.map((page, index) => ({
+                pages: this.safePages.map((page, index) => ({
                     name: this.createUniquePageName(page.name || page.title, index + 1, usedNames),
                     title: page.title || `页面 ${index + 1}`,
                     elements: deepClone(page.elements)

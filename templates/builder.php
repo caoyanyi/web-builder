@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    <?php
+        $builderCssVersion = @filemtime(__DIR__ . '/../public/css/builder.css') ?: time();
+        $builderJsVersion = @filemtime(__DIR__ . '/../public/js/builder.js') ?: time();
+    ?>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>拖拽构建器 - 可视化生成器</title>
     <link href="vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
     <link href="vendor/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
-    <link href="css/builder.css" rel="stylesheet">
+    <link href="css/builder.css?v=<?php echo $builderCssVersion; ?>" rel="stylesheet">
     <script src="vendor/vue/vue.global.prod.js"></script>
 </head>
 <body>
@@ -19,8 +23,8 @@
                         拖拽构建器
                     </h5>
                     <div class="toolbar-meta">
-                        <span class="status-pill">{{ pages.length }} 个页面</span>
-                        <span class="status-pill">{{ currentPage.elements.length }} 个组件</span>
+                        <span class="status-pill">{{ pageCount }} 个页面</span>
+                        <span class="status-pill">{{ currentElementCount }} 个组件</span>
                         <span class="status-pill">Ctrl/Cmd + Z 撤销</span>
                         <span v-if="selectedElement" class="status-pill status-pill-active">
                             已选中 {{ elementLabels[selectedElement.type] || selectedElement.type }}
@@ -200,13 +204,13 @@
                             </button>
                         </div>
 
-                        <div v-if="savedProjects.length === 0" class="saved-empty-state">
+                        <div v-if="safeSavedProjects.length === 0" class="saved-empty-state">
                             暂无已保存项目，保存后会显示在这里。
                         </div>
 
                         <div v-else class="saved-projects">
                             <div
-                                v-for="project in savedProjects"
+                                v-for="project in safeSavedProjects"
                                 :key="project.id"
                                 :class="['saved-project-card', { active: project.id === projectId }]"
                             >
@@ -239,7 +243,7 @@
                             <h6 class="section-title mb-2">页面管理</h6>
                             <div class="page-chip-group">
                                 <button
-                                    v-for="page in pages"
+                                    v-for="page in safePages"
                                     :key="page.id"
                                     type="button"
                                     :class="['page-chip', { active: currentPageId === page.id }]"
@@ -318,14 +322,14 @@
                             @drop="onRootDrop"
                             @click="clearSelection"
                         >
-                            <div v-if="currentPage.elements.length === 0" class="canvas-empty-state">
+                            <div v-if="currentPageElements.length === 0" class="canvas-empty-state">
                                 <i class="bi bi-inboxes display-5"></i>
                                 <h5>从左侧拖拽组件开始构建</h5>
                                 <p>现在支持表单组件、项目导入导出、历史撤销重做、跨容器拖拽移动和 ZIP 导出。</p>
                             </div>
 
                             <component-renderer
-                                v-for="element in currentPage.elements"
+                                v-for="element in currentPageElements"
                                 :key="element.id"
                                 :element="element"
                                 :selected-element-id="selectedElementId"
@@ -557,6 +561,6 @@
     </div>
 
     <script src="vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
-    <script src="js/builder.js"></script>
+    <script src="js/builder.js?v=<?php echo $builderJsVersion; ?>"></script>
 </body>
 </html>
