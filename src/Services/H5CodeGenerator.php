@@ -246,6 +246,17 @@ class App {
                 
             case 'button':
                 return `<button class="${props.class || ''}" style="${props.style || ''}" onclick="${props.onclick || ''}">${props.text || '按钮'}</button>`;
+
+            case 'input':
+                const inputLabel = props.label ? `<label style="display:block;margin-bottom:6px;font-weight:600;">${props.label}${props.required ? '<span style="color:#c2410c;"> *</span>' : ''}</label>` : '';
+                return `<div style="${props.width ? `width:${props.width};` : ''}">${inputLabel}<input type="text" class="${props.class || ''}" style="${props.style || ''}" placeholder="${props.placeholder || ''}" value="${props.value || ''}"></div>`;
+
+            case 'textarea':
+                const textareaLabel = props.label ? `<label style="display:block;margin-bottom:6px;font-weight:600;">${props.label}${props.required ? '<span style="color:#c2410c;"> *</span>' : ''}</label>` : '';
+                return `<div style="${props.width ? `width:${props.width};` : ''}">${textareaLabel}<textarea class="${props.class || ''}" style="${props.style || ''}" rows="${props.rows || '4'}" placeholder="${props.placeholder || ''}">${props.value || ''}</textarea></div>`;
+
+            case 'spacer':
+                return `<div class="${props.class || ''}" style="height:${props.height || '32px'};${props.style || ''}"></div>`;
                 
             case 'form':
                 return `<form class="${props.class || ''}" style="${props.style || ''}">${props.content || ''}</form>`;
@@ -372,6 +383,37 @@ JS;
                 $style = $props['style'] ?? '';
                 $onclick = $props['onclick'] ?? '';
                 return "    <button class=\"{$class}\" style=\"{$style}\" onclick=\"{$onclick}\">{$text}</button>\n";
+
+            case 'input':
+                $label = $props['label'] ?? '';
+                $required = !empty($props['required']) ? '<span style="color:#c2410c;"> *</span>' : '';
+                $placeholder = $props['placeholder'] ?? '';
+                $value = $props['value'] ?? '';
+                $class = $props['class'] ?? 'form-control';
+                $width = $props['width'] ?? '';
+                $style = $props['style'] ?? '';
+                $wrapperStyle = $width ? "width: {$width};" : '';
+                $labelHtml = $label ? "    <label style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
+                return "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <input type=\"text\" class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{$value}\">\n    </div>\n";
+
+            case 'textarea':
+                $label = $props['label'] ?? '';
+                $required = !empty($props['required']) ? '<span style="color:#c2410c;"> *</span>' : '';
+                $placeholder = $props['placeholder'] ?? '';
+                $value = $props['value'] ?? '';
+                $rows = $props['rows'] ?? '4';
+                $class = $props['class'] ?? 'form-control';
+                $width = $props['width'] ?? '';
+                $style = $props['style'] ?? '';
+                $wrapperStyle = $width ? "width: {$width};" : '';
+                $labelHtml = $label ? "    <label style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
+                return "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <textarea class=\"{$class}\" style=\"{$style}\" rows=\"{$rows}\" placeholder=\"{$placeholder}\">{$value}</textarea>\n    </div>\n";
+
+            case 'spacer':
+                $height = $props['height'] ?? '32px';
+                $class = $props['class'] ?? '';
+                $style = $props['style'] ?? '';
+                return "    <div class=\"{$class}\" style=\"height: {$height}; {$style}\"></div>\n";
                 
             case 'form':
                 $content = $props['content'] ?? '';

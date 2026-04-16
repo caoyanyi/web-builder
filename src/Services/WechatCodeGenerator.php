@@ -187,6 +187,36 @@ page {
                 $class = $props['class'] ?? '';
                 $style = $props['style'] ?? '';
                 return "<button class=\"{$class}\" style=\"{$style}\">{$text}</button>\n";
+
+            case 'input':
+                $label = $props['label'] ?? '';
+                $required = !empty($props['required']) ? '<text style="color:#c2410c;">*</text>' : '';
+                $placeholder = $props['placeholder'] ?? '';
+                $value = $props['value'] ?? '';
+                $class = $props['class'] ?? '';
+                $width = $props['width'] ?? '';
+                $style = $props['style'] ?? '';
+                $wrapperStyle = $width ? "width:{$width};" : '';
+                $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
+                return "<view style=\"{$wrapperStyle}\">{$labelWxml}<input class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{$value}\" /></view>\n";
+
+            case 'textarea':
+                $label = $props['label'] ?? '';
+                $required = !empty($props['required']) ? '<text style="color:#c2410c;">*</text>' : '';
+                $placeholder = $props['placeholder'] ?? '';
+                $value = $props['value'] ?? '';
+                $class = $props['class'] ?? '';
+                $width = $props['width'] ?? '';
+                $style = $props['style'] ?? '';
+                $wrapperStyle = $width ? "width:{$width};" : '';
+                $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
+                return "<view style=\"{$wrapperStyle}\">{$labelWxml}<textarea class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\">{$value}</textarea></view>\n";
+
+            case 'spacer':
+                $height = $props['height'] ?? '32px';
+                $class = $props['class'] ?? '';
+                $style = $props['style'] ?? '';
+                return "<view class=\"{$class}\" style=\"height:{$height};{$style}\"></view>\n";
                 
             default:
                 return "<!-- 未知元素类型: {$type} -->\n";
