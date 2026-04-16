@@ -226,13 +226,17 @@ class App {
         return html;
     }
     
-    generateElementHtml(element) {
-        const { type, props = {} } = element;
+            generateElementHtml(element) {
+                const { type, props = {} } = element;
         
         switch (type) {
             case 'div':
                 const children = element.children ? element.children.map(child => this.generateElementHtml(child)).join('') : '';
                 return `<div class="${props.class || ''}" style="${props.style || ''}">${children}</div>`;
+
+            case 'row':
+                const rowChildren = element.children ? element.children.map(child => this.generateElementHtml(child)).join('') : '';
+                return `<div class="${props.class || ''}" style="display:flex;flex-wrap:wrap;${props.style || ''}">${rowChildren}</div>`;
                 
             case 'text':
                 return `<p class="${props.class || ''}" style="${props.style || ''}">${props.content || ''}</p>`;
@@ -347,7 +351,7 @@ JS;
                     $childrenHtml .= $this->generateElementHtml($child);
                 }
                 $emptyContent = empty($children) ? '        <div class="text-muted text-sm w-100 text-center py-2">拖拽组件到此处</div>' : '';
-                return "    <div class='w-100 d-flex flex-wrap p-3 border relative {$class}' style='{$style}'>\n       <div class='w-100 mt-4'>\n{$emptyContent}\n{$childrenHtml}        </div>\n    </div>\n";
+                return "    <div class='w-100 d-flex flex-wrap p-3 border relative {$class}' style='display:flex; flex-wrap:wrap; {$style}'>\n{$emptyContent}\n{$childrenHtml}    </div>\n";
                 
             case 'text':
                 $content = $props['content'] ?? '';

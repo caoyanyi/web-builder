@@ -159,8 +159,11 @@ page {
         
         switch ($type) {
             case 'view':
+            case 'div':
+            case 'row':
                 $class = $props['class'] ?? '';
-                $style = $props['style'] ?? '';
+                $layoutStyle = $type === 'row' ? 'display:flex; flex-wrap:wrap;' : '';
+                $style = $layoutStyle . ($props['style'] ?? '');
                 $childrenWxml = '';
                 foreach ($children as $child) {
                     $childrenWxml .= $this->generateElementWxml($child);
