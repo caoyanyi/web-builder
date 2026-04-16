@@ -391,7 +391,23 @@ createApp({
     },
     computed: {
         currentPage() {
-            return this.pages.find((page) => page.id === this.currentPageId) || this.pages[0];
+            const pages = Array.isArray(this.pages) ? this.pages : [];
+            const page = pages.find((item) => item.id === this.currentPageId) || pages[0];
+
+            if (!page) {
+                return {
+                    id: null,
+                    name: 'index',
+                    title: '首页',
+                    elements: []
+                };
+            }
+
+            if (!Array.isArray(page.elements)) {
+                page.elements = [];
+            }
+
+            return page;
         },
         selectedElement() {
             if (!this.selectedElementId || !this.currentPage) {
