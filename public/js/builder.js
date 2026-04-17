@@ -1074,6 +1074,7 @@ createApp({
             submissionSearchKeyword: '',
             submissionSourceFilter: 'all',
             submissionPageFilter: 'all',
+            submissionAnalysisFieldKey: '',
             selectedSubmissionId: null,
             draftInfo: null,
             historyStack: [],
@@ -1302,6 +1303,174 @@ createApp({
                 total: records.length,
                 today: todayCount,
                 pageCount
+            };
+        },
+        submissionSourceBreakdown() {
+            const statsMap = new Map();
+
+            this.filteredSubmissionRecords.forEach((submission) => {
+                const source = String(submission && submission.source ? submission.source : 'unknown');
+                const nextItem = statsMap.get(source) || {
+                    key: source,
+                    label: this.getSubmissionSourceLabel(source),
+                    count: 0
+                };
+
+                nextItem.count += 1;
+                statsMap.set(source, nextItem);
+            });
+
+            return Array.from(statsMap.values())
+                .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label, 'zh-CN'));
+        },
+        submissionPageBreakdown() {
+            const statsMap = new Map();
+
+            this.filteredSubmissionRecords.forEach((submission) => {
+                const pageKey = String(submission.page_name || submission.page_title || 'unknown');
+                const pageLabel = String(submission.page_title || submission.page_name || '未命名页面');
+                const nextItem = statsMap.get(pageKey) || {
+                    key: pageKey,
+                    label: pageLabel,
+                    count: 0
+                };
+
+                nextItem.count += 1;
+                statsMap.set(pageKey, nextItem);
+            });
+
+            return Array.from(statsMap.values())
+                .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label, 'zh-CN'));
+        },
+        submissionFieldCatalog() {
+            const statsMap = new Map();
+
+            this.filteredSubmissionRecords.forEach((submission) => {
+                this.getSubmissionFieldEntries(submission).forEach((field) => {
+                    const fieldMeta = this.getSubmissionFieldMeta(submission, field.key) || {};
+                    const currentItem = statsMap.get(field.key) || {
+                        key: field.key,
+                        label: field.label,
+                        type: fieldMeta.type || '',
+                        recordCount: 0,
+                        filledCount: 0
+                    };
+
+                    currentItem.recordCount += 1;
+                    if (this.isSubmissionFieldFilled(field.rawValue)) {
+                        currentItem.filledCount += 1;
+                    }
+
+                    if (!currentItem.type && fieldMeta.type) {
+                        currentItem.type = fieldMeta.type;
+                    }
+
+                    statsMap.set(field.key, currentItem);
+                });
+            });
+
+            return Array.from(statsMap.values())
+                .sort((left, right) => {
+                    if (right.filledCount !== left.filledCount) {
+                        return right.filledCount - left.filledCount;
+                    }
+
+                    return left.label.localeCompare(right.label, 'zh-CN');
+                });
+        },
+        activeSubmissionAnalysisFieldKey() {
+            if (this.submissionFieldCatalog.length === 0) {
+                return '';
+            }
+
+            if (this.submissionAnalysisFieldKey && this.submissionFieldCatalog.some((field) => field.key === this.submissionAnalysisFieldKey)) {
+                return this.submissionAnalysisFieldKey;
+            }
+
+            return this.submissionFieldCatalog[0].key;
+        },
+        activeSubmissionAnalysisField() {
+            return this.submissionFieldCatalog.find((field) => field.key === this.activeSubmissionAnalysisFieldKey) || null;
+        },
+        submissionValueDistribution() {
+            const fieldKey = this.activeSubmissionAnalysisFieldKey;
+            if (!fieldKey) {
+                return [];
+            }
+
+            const valueMap = new Map();
+
+            this.filteredSubmissionRecords.forEach((submission) => {
+                const formData = submission && submission.form_data && typeof submission.form_data === 'object'
+                    ? submission.form_data
+                    : {};
+                const rawValue = Object.prototype.hasOwnProperty.call(formData, fieldKey)
+                    ? formData[fieldKey]
+                    : undefined;
+                const labels = this.getSubmissionFieldValueLabels(submission, fieldKey, rawValue);
+
+                labels.forEach((label) => {
+                    const currentItem = valueMap.get(label) || {
+                        label,
+                        count: 0
+                    };
+                    currentItem.count += 1;
+                    valueMap.set(label, currentItem);
+                });
+            });
+
+            const items = Array.from(valueMap.values())
+                .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label, 'zh-CN'));
+            const maxCount = items[0] ? items[0].count : 0;
+            const presentCount = items.reduce((total, item) => total + item.count, 0);
+
+            return items.map((item) => ({
+                ...item,
+                percentage: presentCount > 0 ? Math.round((item.count / presentCount) * 100) : 0,
+                barWidth: maxCount > 0 ? Math.max(10, Math.round((item.count / maxCount) * 100)) : 0
+            }));
+        },
+        submissionAnalysisStats() {
+            const fieldKey = this.activeSubmissionAnalysisFieldKey;
+            const records = this.filteredSubmissionRecords;
+
+            if (!fieldKey || records.length === 0) {
+                return {
+                    totalRecords: records.length,
+                    filledRecords: 0,
+                    emptyRecords: records.length,
+                    fillRate: 0,
+                    uniqueValueCount: 0,
+                    topValueLabel: '',
+                    topValueCount: 0
+                };
+            }
+
+            let filledRecords = 0;
+
+            records.forEach((submission) => {
+                const formData = submission && submission.form_data && typeof submission.form_data === 'object'
+                    ? submission.form_data
+                    : {};
+                const rawValue = Object.prototype.hasOwnProperty.call(formData, fieldKey)
+                    ? formData[fieldKey]
+                    : undefined;
+
+                if (this.isSubmissionFieldFilled(rawValue)) {
+                    filledRecords += 1;
+                }
+            });
+
+            const topValue = this.submissionValueDistribution[0] || null;
+
+            return {
+                totalRecords: records.length,
+                filledRecords,
+                emptyRecords: Math.max(0, records.length - filledRecords),
+                fillRate: records.length > 0 ? Math.round((filledRecords / records.length) * 100) : 0,
+                uniqueValueCount: this.submissionValueDistribution.length,
+                topValueLabel: topValue ? topValue.label : '',
+                topValueCount: topValue ? topValue.count : 0
             };
         },
         fieldDefinitionMap() {
@@ -2101,6 +2270,27 @@ createApp({
 
             return String(this.getFieldOptionLabel(submission, fieldKey, fieldValue));
         },
+        isSubmissionFieldFilled(fieldValue) {
+            if (Array.isArray(fieldValue)) {
+                return fieldValue.some((item) => String(item || '').trim() !== '');
+            }
+
+            return fieldValue !== null && fieldValue !== undefined && String(fieldValue).trim() !== '';
+        },
+        getSubmissionFieldValueLabels(submission, fieldKey, fieldValue) {
+            if (!this.isSubmissionFieldFilled(fieldValue)) {
+                return [];
+            }
+
+            if (Array.isArray(fieldValue)) {
+                return fieldValue
+                    .map((item) => this.getFieldOptionLabel(submission, fieldKey, item))
+                    .map((item) => String(item || '').trim())
+                    .filter(Boolean);
+            }
+
+            return [String(this.getFieldOptionLabel(submission, fieldKey, fieldValue) || '').trim()].filter(Boolean);
+        },
         getSubmissionFieldEntries(submission) {
             const formData = submission && submission.form_data && typeof submission.form_data === 'object'
                 ? submission.form_data
@@ -2128,6 +2318,9 @@ createApp({
             this.submissionSearchKeyword = '';
             this.submissionSourceFilter = 'all';
             this.submissionPageFilter = 'all';
+        },
+        selectSubmissionAnalysisField(fieldKey) {
+            this.submissionAnalysisFieldKey = fieldKey || '';
         },
         escapeCsvValue(value) {
             const normalized = Array.isArray(value) ? value.join(', ') : String(value ?? '');

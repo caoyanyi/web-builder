@@ -299,6 +299,106 @@
                             </button>
                         </div>
 
+                        <div v-if="filteredSubmissionRecords.length > 0" class="submission-insights mb-3">
+                            <div class="submission-insight-card">
+                                <div class="submission-insight-head">
+                                    <div>
+                                        <strong>聚合概览</strong>
+                                        <p class="mb-0 text-muted small">基于当前筛选结果自动汇总来源与页面分布。</p>
+                                    </div>
+                                </div>
+
+                                <div class="submission-ranking-grid">
+                                    <div>
+                                        <label class="form-label small mb-2">来源排行</label>
+                                        <div class="submission-ranking-list">
+                                            <div v-for="item in submissionSourceBreakdown.slice(0, 5)" :key="item.key" class="submission-ranking-row">
+                                                <span>{{ item.label }}</span>
+                                                <strong>{{ item.count }}</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="form-label small mb-2">页面排行</label>
+                                        <div class="submission-ranking-list">
+                                            <div v-for="item in submissionPageBreakdown.slice(0, 5)" :key="item.key" class="submission-ranking-row">
+                                                <span>{{ item.label }}</span>
+                                                <strong>{{ item.count }}</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="submission-insight-card">
+                                <div class="submission-insight-head">
+                                    <div>
+                                        <strong>字段分析</strong>
+                                        <p class="mb-0 text-muted small">选择一个字段，查看填写率和取值分布。</p>
+                                    </div>
+                                    <span class="status-pill" v-if="activeSubmissionAnalysisField">{{ activeSubmissionAnalysisField.label }}</span>
+                                </div>
+
+                                <div v-if="submissionFieldCatalog.length === 0" class="saved-empty-state">
+                                    当前筛选结果里没有可分析字段。
+                                </div>
+
+                                <template v-else>
+                                    <div class="mb-3">
+                                        <label class="form-label">分析字段</label>
+                                        <select
+                                            class="form-select form-select-sm"
+                                            :value="activeSubmissionAnalysisFieldKey"
+                                            @change="selectSubmissionAnalysisField($event.target.value)"
+                                        >
+                                            <option v-for="field in submissionFieldCatalog" :key="field.key" :value="field.key">
+                                                {{ field.label }}（{{ field.filledCount }}/{{ filteredSubmissionRecords.length }}）
+                                            </option>
+                                        </select>
+                                    </div>
+
+                                    <div class="submission-analysis-stats">
+                                        <div class="submission-analysis-stat">
+                                            <strong>{{ submissionAnalysisStats.fillRate }}%</strong>
+                                            <span>填写率</span>
+                                        </div>
+                                        <div class="submission-analysis-stat">
+                                            <strong>{{ submissionAnalysisStats.filledRecords }}</strong>
+                                            <span>已填写</span>
+                                        </div>
+                                        <div class="submission-analysis-stat">
+                                            <strong>{{ submissionAnalysisStats.uniqueValueCount }}</strong>
+                                            <span>不同取值</span>
+                                        </div>
+                                        <div class="submission-analysis-stat">
+                                            <strong>{{ submissionAnalysisStats.topValueCount }}</strong>
+                                            <span>Top 值次数</span>
+                                        </div>
+                                    </div>
+
+                                    <div v-if="submissionAnalysisStats.topValueLabel" class="submission-analysis-highlight">
+                                        最常见取值：<strong>{{ submissionAnalysisStats.topValueLabel }}</strong>
+                                    </div>
+
+                                    <div v-if="submissionValueDistribution.length === 0" class="saved-empty-state">
+                                        这个字段在当前筛选结果中还没有有效取值。
+                                    </div>
+
+                                    <div v-else class="submission-distribution-list">
+                                        <div v-for="item in submissionValueDistribution.slice(0, 8)" :key="item.label" class="submission-distribution-row">
+                                            <div class="submission-distribution-meta">
+                                                <span>{{ item.label }}</span>
+                                                <strong>{{ item.count }} 次 · {{ item.percentage }}%</strong>
+                                            </div>
+                                            <div class="submission-distribution-track">
+                                                <div class="submission-distribution-bar" :style="{ width: `${item.barWidth}%` }"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
                         <div v-if="safeSubmissionRecords.length === 0" class="saved-empty-state">
                             还没有提交记录。给按钮配置“提交表单”动作并打开预览后，就可以把当前页面表单数据投递到本地接口。
                         </div>
