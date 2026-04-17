@@ -2,7 +2,7 @@ const { createApp } = Vue;
 
 const CONTAINER_TYPES = ['div', 'row'];
 const FORM_FIELD_TYPES = ['input', 'textarea', 'select', 'radio-group', 'checkbox-group'];
-const PROP_ORDER = ['content', 'text', 'label', 'required', 'placeholder', 'value', 'rows', 'fieldKey', 'stepIndex', 'stepTitle', 'conditionEnabled', 'conditionFieldKey', 'conditionOperator', 'conditionValue', 'inputType', 'options', 'optionLayout', 'validationPattern', 'validationMessage', 'height', 'src', 'alt', 'class', 'width', 'style', 'actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitResetForm', 'submitRedirectUrl'];
+const PROP_ORDER = ['content', 'text', 'summaryTitle', 'emptyText', 'label', 'required', 'placeholder', 'value', 'rows', 'fieldKey', 'stepIndex', 'stepTitle', 'conditionEnabled', 'conditionFieldKey', 'conditionOperator', 'conditionValue', 'inputType', 'options', 'optionLayout', 'validationPattern', 'validationMessage', 'height', 'src', 'alt', 'class', 'width', 'style', 'actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitResetForm', 'submitRedirectUrl'];
 const HISTORY_LIMIT = 60;
 const DRAG_KIND_COMPONENT = 'component';
 const DRAG_KIND_ELEMENT = 'existing-element';
@@ -571,6 +571,15 @@ function parseChoiceValues(value) {
         .filter(Boolean);
 }
 
+function escapeHtml(value = '') {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function applyConditionalDefaults(props = {}) {
     return {
         ...DEFAULT_STEP_PROPS,
@@ -742,6 +751,7 @@ const ComponentRenderer = {
                 text: '文本',
                 image: '图片',
                 button: '按钮',
+                'form-summary': '表单摘要',
                 input: '输入框',
                 textarea: '文本域',
                 select: '下拉选择',
@@ -797,6 +807,14 @@ const ComponentRenderer = {
         },
         isHorizontalChoiceLayout() {
             return (this.element.props && this.element.props.optionLayout) === 'horizontal';
+        },
+        summaryPreviewEntries() {
+            return Object.values(this.fieldDefinitions || {})
+                .sort((left, right) => String(left.label || left.key).localeCompare(String(right.label || right.key), 'zh-CN'))
+                .slice(0, 5);
+        },
+        summaryPreviewOverflow() {
+            return Math.max(0, Object.keys(this.fieldDefinitions || {}).length - this.summaryPreviewEntries.length);
         },
         visibilitySummary() {
             return describeConditionRule(this.element.props || {}, this.fieldDefinitions || {});
@@ -979,6 +997,25 @@ const ComponentRenderer = {
                 </span>
             </div>
 
+            <div v-else-if="element.type === 'form-summary'" class="builder-summary-preview" :style="elementStyle">
+                <div class="builder-summary-head">
+                    <strong>{{ element.props.summaryTitle || '请确认以下信息' }}</strong>
+                    <span>{{ Object.keys(fieldDefinitions || {}).length }} 项字段</span>
+                </div>
+                <div v-if="summaryPreviewEntries.length > 0" class="builder-summary-list">
+                    <div v-for="field in summaryPreviewEntries" :key="field.key" class="builder-summary-item">
+                        <span>{{ field.label }}</span>
+                        <strong>待填写</strong>
+                    </div>
+                </div>
+                <div v-else class="builder-summary-empty">
+                    {{ element.props.emptyText || '当前还没有可汇总的表单字段' }}
+                </div>
+                <div v-if="summaryPreviewOverflow > 0" class="builder-summary-foot">
+                    还有 {{ summaryPreviewOverflow }} 个字段会在预览和导出页面里自动汇总
+                </div>
+            </div>
+
             <div v-else-if="element.type === 'input'" class="builder-field-group" :style="elementStyle">
                 <label v-if="element.props.label" class="builder-field-label">
                     {{ element.props.label }}
@@ -1153,6 +1190,7 @@ createApp({
                 { type: 'select', name: '下拉选择', icon: 'bi bi-menu-button-wide', description: '适合行业、套餐、来源等单选场景。' },
                 { type: 'radio-group', name: '单选组', icon: 'bi bi-ui-radios', description: '适合性别、档位、意向等级等互斥选择。' },
                 { type: 'checkbox-group', name: '多选组', icon: 'bi bi-ui-checks', description: '适合兴趣标签、服务需求等多选收集。' },
+                { type: 'form-summary', name: '表单摘要', icon: 'bi bi-card-checklist', description: '自动汇总当前可见字段，适合放在最后一步做提交前复核。' },
                 { type: 'spacer', name: '间距块', icon: 'bi bi-arrows-expand-vertical', description: '快速拉开区块间距，调节页面节奏。' }
             ],
             layoutComponents: [
@@ -1179,6 +1217,7 @@ createApp({
                 text: '文本',
                 image: '图片',
                 button: '按钮',
+                'form-summary': '表单摘要',
                 input: '输入框',
                 textarea: '文本域',
                 select: '下拉选择',
@@ -1194,6 +1233,8 @@ createApp({
                 src: '图片地址',
                 alt: '图片描述',
                 text: '按钮文案',
+                summaryTitle: '摘要标题',
+                emptyText: '空态文案',
                 label: '字段标签',
                 required: '必填',
                 placeholder: '占位提示',
@@ -2784,6 +2825,8 @@ createApp({
                     return String(props.content || '文本内容').slice(0, 28);
                 case 'button':
                     return props.text || '按钮文案';
+                case 'form-summary':
+                    return props.summaryTitle || '提交前复核';
                 case 'image':
                     return props.alt || props.src || '图片资源';
                 case 'input':
@@ -3280,6 +3323,14 @@ createApp({
                         submitResetForm: false,
                         submitRedirectUrl: ''
                     });
+                case 'form-summary':
+                    return applyConditionalDefaults({
+                        summaryTitle: '请确认以下信息',
+                        emptyText: '当前还没有可汇总的表单字段',
+                        class: '',
+                        width: '100%',
+                        style: ''
+                    });
                 case 'input':
                     return applyConditionalDefaults({
                         label: '输入项',
@@ -3711,6 +3762,7 @@ createApp({
                     : stage;
                 this.refreshPreviewConditionalVisibility(scope);
                 this.refreshPreviewStepState(scope);
+                this.refreshPreviewSummaryState(scope);
             };
             stage.addEventListener('input', this.previewStageInteractionHandler);
             stage.addEventListener('change', this.previewStageInteractionHandler);
@@ -3730,6 +3782,9 @@ createApp({
         },
         getPreviewFields(scope) {
             return Array.from((scope || this.$refs.previewStage || document).querySelectorAll('[data-builder-field="true"]'));
+        },
+        getPreviewSummaryBlocks(scope) {
+            return Array.from((scope || this.$refs.previewStage || document).querySelectorAll('[data-summary-enabled="1"]'));
         },
         isPreviewFieldConditionVisible(field) {
             return !(field && typeof field.closest === 'function' && field.closest('[data-conditional-hidden="1"]'));
@@ -3781,6 +3836,98 @@ createApp({
             }
 
             return field && field.value !== undefined ? field.value : '';
+        },
+        getPreviewFieldDisplayValue(field) {
+            if (!field) {
+                return '未填写';
+            }
+
+            const fieldKind = field.dataset ? field.dataset.fieldKind || '' : '';
+            const rawValue = this.getPreviewFieldValue(field);
+
+            if (fieldKind === 'checkbox-group') {
+                const labels = Array.from(field.querySelectorAll('input[type="checkbox"]:checked')).map((input) => {
+                    const labelNode = input.closest('label');
+                    const textNode = labelNode ? labelNode.querySelector('span') : null;
+                    return textNode ? textNode.textContent.trim() : input.value;
+                }).filter(Boolean);
+                return labels.length > 0 ? labels.join('、') : '未填写';
+            }
+
+            if (fieldKind === 'radio-group') {
+                const checked = field.querySelector('input[type="radio"]:checked');
+                if (!checked) {
+                    return '未填写';
+                }
+
+                const labelNode = checked.closest('label');
+                const textNode = labelNode ? labelNode.querySelector('span') : null;
+                return textNode ? textNode.textContent.trim() : checked.value;
+            }
+
+            if (fieldKind === 'select') {
+                const option = field.options && field.selectedIndex >= 0 ? field.options[field.selectedIndex] : null;
+                const optionLabel = option && option.value !== '' ? option.textContent.trim() : '';
+                return optionLabel || '未填写';
+            }
+
+            return this.isPreviewFieldEmpty(rawValue) ? '未填写' : String(rawValue);
+        },
+        buildPreviewSummaryEntries(scope) {
+            return this.getSubmittablePreviewFields(scope).map((field, index) => ({
+                key: field.dataset.fieldKey || `field_${index + 1}`,
+                label: field.dataset.label || field.dataset.fieldKey || `字段 ${index + 1}`,
+                value: this.getPreviewFieldDisplayValue(field)
+            }));
+        },
+        refreshPreviewSummaryState(scope) {
+            const pageNode = this.getPreviewPageNode(scope);
+            const summaryBlocks = this.getPreviewSummaryBlocks(pageNode);
+
+            if (summaryBlocks.length === 0) {
+                return;
+            }
+
+            const entries = this.buildPreviewSummaryEntries(pageNode);
+
+            summaryBlocks.forEach((block) => {
+                const listNode = block.querySelector('[data-summary-list]');
+                const emptyNode = block.querySelector('[data-summary-empty-state]');
+                const countNode = block.querySelector('[data-summary-count]');
+
+                if (countNode) {
+                    countNode.textContent = entries.length > 0 ? `共 ${entries.length} 项` : '暂无可复核字段';
+                }
+
+                if (listNode) {
+                    listNode.innerHTML = entries.map((entry) => `
+                        <div class="builder-form-summary-item">
+                            <span>${escapeHtml(entry.label)}</span>
+                            <strong>${escapeHtml(entry.value)}</strong>
+                        </div>
+                    `).join('');
+                }
+
+                if (emptyNode) {
+                    emptyNode.hidden = entries.length > 0;
+                }
+            });
+        },
+        refreshAllPreviewSummaryStates() {
+            const stage = this.$refs.previewStage;
+
+            if (!stage) {
+                return;
+            }
+
+            const pages = Array.from(stage.querySelectorAll('.page'));
+
+            if (pages.length === 0) {
+                this.refreshPreviewSummaryState(stage);
+                return;
+            }
+
+            pages.forEach((page) => this.refreshPreviewSummaryState(page));
         },
         collectPreviewFieldValues(scope) {
             const fieldValues = {};
@@ -4029,6 +4176,7 @@ createApp({
 
             if (direction === 'prev') {
                 this.refreshPreviewStepState(scope, Math.max(1, currentStep - 1));
+                this.refreshPreviewSummaryState(scope);
                 return false;
             }
 
@@ -4037,6 +4185,7 @@ createApp({
             }
 
             this.refreshPreviewStepState(scope, Math.min(totalSteps, currentStep + 1));
+            this.refreshPreviewSummaryState(scope);
             return false;
         },
         async handleBuilderSubmitAction(trigger, config = {}) {
@@ -4071,6 +4220,7 @@ createApp({
                 });
                 this.refreshPreviewConditionalVisibility(scope);
                 this.refreshPreviewStepState(scope, 1);
+                this.refreshPreviewSummaryState(scope);
             }
 
             window.alert(config.successMessage || '提交成功');
@@ -4297,6 +4447,7 @@ createApp({
                     this.setupPreviewStageListeners();
                     this.refreshAllPreviewConditionalVisibility();
                     this.refreshAllPreviewStepStates();
+                    this.refreshAllPreviewSummaryStates();
                 });
                 this.setStatus('预览内容已更新。', 'success');
             } catch (error) {

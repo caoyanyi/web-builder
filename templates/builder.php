@@ -980,6 +980,16 @@
                             </div>
                         </div>
 
+                        <div v-if="selectedElementType === 'form-summary'" class="property-shortcuts">
+                            <label class="form-label">摘要组件说明</label>
+                            <div class="form-text mb-3">这个组件会自动汇总当前页面里“条件可见”的表单字段和值，适合放在最后一步做提交前复核。</div>
+                            <div class="shortcut-grid shortcut-grid-tight">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyWidthPreset('100%')">整行卡片</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyWidthPreset('50%')">半宽卡片</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyContainerPreset('padding: 18px; border: 1px solid #d7e2d6; border-radius: 18px; background: linear-gradient(180deg, #ffffff 0%, #f8fbf7 100%);')">卡片样式</button>
+                            </div>
+                        </div>
+
                         <div class="property-shortcuts">
                             <label class="form-label">步骤归属</label>
                             <div class="shortcut-grid">

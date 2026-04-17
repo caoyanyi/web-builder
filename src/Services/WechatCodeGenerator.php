@@ -256,6 +256,73 @@ page {
 .builder-step-text {
   font-size: 24rpx;
   line-height: 1.4;
+}
+
+.builder-form-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+  margin-bottom: 20rpx;
+  padding: 24rpx 26rpx;
+  border-radius: 28rpx;
+  border: 1px solid rgba(159, 195, 175, 0.45);
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbf8 100%);
+}
+
+.builder-form-summary-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20rpx;
+}
+
+.builder-form-summary-head text:first-child {
+  color: {$text};
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.builder-form-summary-head text:last-child {
+  color: rgba(96, 117, 111, 0.92);
+  font-size: 24rpx;
+}
+
+.builder-form-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.builder-form-summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 24rpx;
+  border: 1px solid rgba(215, 226, 214, 0.82);
+  background: rgba(248, 251, 247, 0.94);
+}
+
+.builder-form-summary-item text:first-child {
+  color: rgba(96, 117, 111, 0.92);
+  font-size: 24rpx;
+  flex: 1;
+}
+
+.builder-form-summary-item text:last-child {
+  color: {$text};
+  font-size: 24rpx;
+  text-align: right;
+}
+
+.builder-form-summary-empty {
+  padding: 20rpx 22rpx;
+  border-radius: 24rpx;
+  border: 1px dashed rgba(159, 195, 175, 0.78);
+  background: rgba(248, 251, 247, 0.84);
+  color: rgba(96, 117, 111, 0.92);
+  font-size: 24rpx;
 }";
     }
     
@@ -294,6 +361,8 @@ page {
         $data['formStepDefinitions'] = $stepDefinitions;
         $data['currentStep'] = $stepDefinitions[0]['index'] ?? 1;
         $data['totalSteps'] = count($stepDefinitions);
+        $data['formSummaryEntries'] = [];
+        $data['formSummaryCount'] = 0;
         $data['visibilityRules'] = $visibilityRules;
         $data['visibilityState'] = $this->buildInitialVisibilityState($visibilityRules, $formValues);
         $data['builderProjectTitle'] = $config['title'] ?? '未命名项目';
@@ -360,7 +429,9 @@ page {
 
     this.setData({
       visibilityState: nextVisibilityState
-    }, callback);
+    }, () => {
+      this.refreshSummaryState(callback);
+    });
   },
 
   isFieldVisible(field) {
@@ -381,6 +452,53 @@ page {
   getSubmittableSchema() {
     const schema = Array.isArray(this.data.formSchema) ? this.data.formSchema : [];
     return schema.filter((field) => this.isFieldVisible(field));
+  },
+
+  getFieldDisplayValue(field) {
+    if (!field) {
+      return '未填写';
+    }
+
+    const values = this.data.formValues || {};
+    const rawValue = values[field.key];
+
+    if (field.type === 'checkbox-group') {
+      const selectedValues = Array.isArray(rawValue) ? rawValue : [];
+      const labels = selectedValues.map((value) => {
+        const matched = (field.options || []).find((option) => option.value === value);
+        return matched ? (matched.label || matched.value) : value;
+      }).filter(Boolean);
+
+      return labels.length > 0 ? labels.join('、') : '未填写';
+    }
+
+    if (field.type === 'radio-group' || field.type === 'select') {
+      const normalizedValue = String(rawValue || '').trim();
+      if (!normalizedValue) {
+        return '未填写';
+      }
+
+      const matched = (field.options || []).find((option) => option.value === normalizedValue);
+      return matched ? (matched.label || matched.value) : normalizedValue;
+    }
+
+    return String(rawValue || '').trim() || '未填写';
+  },
+
+  buildSummaryEntries() {
+    return this.getSubmittableSchema().map((field) => ({
+      key: field.key,
+      label: field.label || field.key,
+      value: this.getFieldDisplayValue(field)
+    }));
+  },
+
+  refreshSummaryState(callback) {
+    const entries = this.buildSummaryEntries();
+    this.setData({
+      formSummaryEntries: entries,
+      formSummaryCount: entries.length
+    }, callback);
   },
 
   validateSchemaFields(fields = []) {
@@ -769,6 +887,10 @@ page {
                 $wxml = "<button class=\"{$class}\" style=\"{$style}\"{$actionAttrs}>{$text}</button>\n";
                 break;
 
+            case 'form-summary':
+                $wxml = $this->buildWechatSummaryWxml($props);
+                break;
+
             case 'input':
                 $label = $props['label'] ?? '';
                 $required = !empty($props['required']) ? '<text style="color:#c2410c;">*</text>' : '';
@@ -940,6 +1062,16 @@ page {
         }
 
         return "<label wx:for=\"{{formSchemaMap.{$fieldKey}.options}}\" wx:key=\"value\" class=\"choice-option\"><checkbox value=\"{{item.value}}\" checked=\"{{formCheckedMap.{$fieldKey}[item.checkedKey]}}\" /><text>{{item.label}}</text></label>";
+    }
+
+    private function buildWechatSummaryWxml(array $props): string
+    {
+        $class = htmlspecialchars((string) ($props['class'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $style = htmlspecialchars((((string) ($props['width'] ?? '')) !== '' ? ('width:' . (string) $props['width'] . ';') : '') . (string) ($props['style'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $summaryTitle = htmlspecialchars((string) ($props['summaryTitle'] ?? '请确认以下信息'), ENT_QUOTES, 'UTF-8');
+        $emptyText = htmlspecialchars((string) ($props['emptyText'] ?? '当前还没有可汇总的表单字段'), ENT_QUOTES, 'UTF-8');
+
+        return "<view class=\"builder-form-summary {$class}\" style=\"{$style}\"><view class=\"builder-form-summary-head\"><text>{$summaryTitle}</text><text wx:if=\"{{formSummaryCount > 0}}\">共 {{formSummaryCount}} 项</text><text wx:else>暂无可复核字段</text></view><view wx:if=\"{{formSummaryCount > 0}}\" class=\"builder-form-summary-list\"><view wx:for=\"{{formSummaryEntries}}\" wx:key=\"key\" class=\"builder-form-summary-item\"><text>{{item.label}}</text><text>{{item.value}}</text></view></view><view wx:else class=\"builder-form-summary-empty\">{$emptyText}</view></view>\n";
     }
 
     private function parseChoiceOptions(string $rawOptions): array

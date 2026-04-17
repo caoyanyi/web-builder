@@ -331,6 +331,73 @@ body {
     line-height: 1.4;
 }
 
+.builder-form-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    margin-bottom: 1rem;
+    padding: 1rem 1.05rem;
+    border-radius: 18px;
+    border: 1px solid rgba(159, 195, 175, 0.45);
+    background: linear-gradient(180deg, #ffffff 0%, #f7fbf8 100%);
+}
+
+.builder-form-summary-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.builder-form-summary-head strong {
+    color: var(--builder-text);
+    font-size: 0.95rem;
+}
+
+.builder-form-summary-head span {
+    color: var(--builder-text-muted);
+    font-size: 0.82rem;
+}
+
+.builder-form-summary-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.builder-form-summary-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 0.8rem;
+    border-radius: 14px;
+    border: 1px solid rgba(215, 226, 214, 0.82);
+    background: rgba(248, 251, 247, 0.94);
+}
+
+.builder-form-summary-item span {
+    color: var(--builder-text-muted);
+    font-size: 0.84rem;
+    word-break: break-word;
+}
+
+.builder-form-summary-item strong {
+    color: var(--builder-text);
+    font-size: 0.84rem;
+    text-align: right;
+    word-break: break-word;
+}
+
+.builder-form-summary-empty {
+    padding: 0.9rem 1rem;
+    border-radius: 14px;
+    border: 1px dashed rgba(159, 195, 175, 0.75);
+    background: rgba(248, 251, 247, 0.82);
+    color: var(--builder-text-muted);
+    font-size: 0.84rem;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
     .navigation ul {
@@ -378,13 +445,17 @@ class App {
 
         document.addEventListener('input', (event) => {
             if (event.target && typeof event.target.closest === 'function' && event.target.closest('[data-builder-field="true"]')) {
-                this.refreshConditionalVisibility(event.target.closest('.page') || document);
+                const scope = event.target.closest('.page') || document;
+                this.refreshConditionalVisibility(scope);
+                this.refreshSummaryState(scope);
             }
         });
 
         document.addEventListener('change', (event) => {
             if (event.target && typeof event.target.closest === 'function' && event.target.closest('[data-builder-field="true"]')) {
-                this.refreshConditionalVisibility(event.target.closest('.page') || document);
+                const scope = event.target.closest('.page') || document;
+                this.refreshConditionalVisibility(scope);
+                this.refreshSummaryState(scope);
             }
         });
     }
@@ -494,6 +565,10 @@ class App {
         return `<div class="builder-step-progress" data-step-progress="1"><div class="builder-step-head"><strong>分步表单</strong><span data-step-summary></span></div><div class="builder-step-track">${items}</div></div>`;
     }
 
+    buildSummaryHtml(props = {}) {
+        return `<div class="builder-form-summary ${props.class || ''}" style="${props.width ? `width:${props.width};` : ''}${props.style || ''}" data-summary-enabled="1"><div class="builder-form-summary-head"><strong>${this.escapeHtmlAttribute(props.summaryTitle || '请确认以下信息')}</strong><span data-summary-count>正在汇总</span></div><div class="builder-form-summary-list" data-summary-list></div><div class="builder-form-summary-empty" data-summary-empty-state>${this.escapeHtmlAttribute(props.emptyText || '当前还没有可汇总的表单字段')}</div></div>`;
+    }
+
     getFieldValue(field) {
         const fieldKind = field.dataset.fieldKind || '';
 
@@ -507,6 +582,39 @@ class App {
         }
 
         return field.value || '';
+    }
+
+    getFieldDisplayValue(field) {
+        const fieldKind = field.dataset.fieldKind || '';
+        const rawValue = this.getFieldValue(field);
+
+        if (fieldKind === 'checkbox-group') {
+            const labels = Array.from(field.querySelectorAll('input[type="checkbox"]:checked')).map((input) => {
+                const labelNode = input.closest('label');
+                const textNode = labelNode ? labelNode.querySelector('span') : null;
+                return textNode ? textNode.textContent.trim() : input.value;
+            }).filter(Boolean);
+            return labels.length > 0 ? labels.join('、') : '未填写';
+        }
+
+        if (fieldKind === 'radio-group') {
+            const checked = field.querySelector('input[type="radio"]:checked');
+            if (!checked) {
+                return '未填写';
+            }
+
+            const labelNode = checked.closest('label');
+            const textNode = labelNode ? labelNode.querySelector('span') : null;
+            return textNode ? textNode.textContent.trim() : checked.value;
+        }
+
+        if (fieldKind === 'select') {
+            const option = field.options && field.selectedIndex >= 0 ? field.options[field.selectedIndex] : null;
+            const optionLabel = option && option.value !== '' ? option.textContent.trim() : '';
+            return optionLabel || '未填写';
+        }
+
+        return this.isEmptyFieldValue(rawValue) ? '未填写' : String(rawValue);
     }
 
     getFormFields(scope = document) {
@@ -538,6 +646,14 @@ class App {
         });
 
         return values;
+    }
+
+    buildSummaryEntries(scope = document) {
+        return this.getSubmittableFields(scope).map((field, index) => ({
+            key: field.dataset.fieldKey || field.name || `field_${index + 1}`,
+            label: field.dataset.label || field.dataset.fieldKey || `字段 ${index + 1}`,
+            value: this.getFieldDisplayValue(field)
+        }));
     }
 
     getPageNode(scope = document) {
@@ -657,6 +773,40 @@ class App {
         }
     }
 
+    refreshSummaryState(scope = document) {
+        const pageNode = this.getPageNode(scope);
+        const summaryBlocks = Array.from((pageNode || document).querySelectorAll('[data-summary-enabled="1"]'));
+
+        if (summaryBlocks.length === 0) {
+            return;
+        }
+
+        const entries = this.buildSummaryEntries(pageNode);
+
+        summaryBlocks.forEach((block) => {
+            const listNode = block.querySelector('[data-summary-list]');
+            const emptyNode = block.querySelector('[data-summary-empty-state]');
+            const countNode = block.querySelector('[data-summary-count]');
+
+            if (countNode) {
+                countNode.textContent = entries.length > 0 ? `共 ${entries.length} 项` : '暂无可复核字段';
+            }
+
+            if (listNode) {
+                listNode.innerHTML = entries.map((entry) => `
+                    <div class="builder-form-summary-item">
+                        <span>${this.escapeHtmlAttribute(entry.label)}</span>
+                        <strong>${this.escapeHtmlAttribute(entry.value)}</strong>
+                    </div>
+                `).join('');
+            }
+
+            if (emptyNode) {
+                emptyNode.hidden = entries.length > 0;
+            }
+        });
+    }
+
     validateFields(fields = []) {
         const invalidField = (fields || []).find((field) => this.validateField(field));
 
@@ -677,6 +827,7 @@ class App {
 
         if (direction === 'prev') {
             this.refreshStepState(scope, Math.max(1, currentStep - 1));
+            this.refreshSummaryState(scope);
             return false;
         }
 
@@ -685,6 +836,7 @@ class App {
         }
 
         this.refreshStepState(scope, Math.min(totalSteps, currentStep + 1));
+        this.refreshSummaryState(scope);
         return false;
     }
 
@@ -870,6 +1022,7 @@ class App {
             });
             this.refreshConditionalVisibility(scope);
             this.refreshStepState(scope, 1);
+            this.refreshSummaryState(scope);
         }
 
         alert(config.successMessage || '提交成功');
@@ -896,6 +1049,7 @@ class App {
         this.loadPageScripts(page);
         this.refreshConditionalVisibility(app.querySelector('.page') || app);
         this.refreshStepState(app.querySelector('.page') || app, 1);
+        this.refreshSummaryState(app.querySelector('.page') || app);
     }
     
     generatePageHtml(page) {
@@ -937,6 +1091,10 @@ class App {
                 
             case 'button':
                 html = `<button class="${props.class || ''}" style="${props.style || ''}" onclick="${this.escapeHtmlAttribute(this.getButtonActionCode(props))}">${props.text || '按钮'}</button>`;
+                break;
+
+            case 'form-summary':
+                html = this.buildSummaryHtml(props);
                 break;
 
             case 'input':
@@ -1137,6 +1295,10 @@ JS;
                 $html = "    <button class=\"{$class}\" style=\"{$style}\" onclick=\"{$onclick}\">{$text}</button>\n";
                 break;
 
+            case 'form-summary':
+                $html = $this->buildSummaryMarkup($props);
+                break;
+
             case 'input':
                 $label = $props['label'] ?? '';
                 $required = !empty($props['required']) ? '<span style="color:#c2410c;"> *</span>' : '';
@@ -1315,6 +1477,16 @@ JS;
         $stepIndex = $this->resolveStepIndex($props);
         $stepTitle = htmlspecialchars((string) ($props['stepTitle'] ?? ''), ENT_QUOTES, 'UTF-8');
         return "    <div data-step-enabled=\"1\" data-step-index=\"{$stepIndex}\" data-step-title=\"{$stepTitle}\">\n{$html}    </div>\n";
+    }
+
+    private function buildSummaryMarkup(array $props): string
+    {
+        $class = htmlspecialchars((string) ($props['class'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $style = htmlspecialchars((((string) ($props['width'] ?? '')) !== '' ? ('width:' . (string) $props['width'] . ';') : '') . (string) ($props['style'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $summaryTitle = htmlspecialchars((string) ($props['summaryTitle'] ?? '请确认以下信息'), ENT_QUOTES, 'UTF-8');
+        $emptyText = htmlspecialchars((string) ($props['emptyText'] ?? '当前还没有可汇总的表单字段'), ENT_QUOTES, 'UTF-8');
+
+        return "    <div class=\"builder-form-summary {$class}\" style=\"{$style}\" data-summary-enabled=\"1\">\n        <div class=\"builder-form-summary-head\"><strong>{$summaryTitle}</strong><span data-summary-count>正在汇总</span></div>\n        <div class=\"builder-form-summary-list\" data-summary-list></div>\n        <div class=\"builder-form-summary-empty\" data-summary-empty-state>{$emptyText}</div>\n    </div>\n";
     }
 
     private function resolveStepIndex(array $props): int
