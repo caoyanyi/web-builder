@@ -927,6 +927,23 @@
                                 <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyWidthPreset('50%')">半宽</button>
                                 <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyWidthPreset('100%')">整行</button>
                             </div>
+                            <div v-if="availableCommonFieldPresets.length > 0" class="mt-3">
+                                <label class="form-label">常用字段预设</label>
+                                <div class="shortcut-grid">
+                                    <button
+                                        v-for="preset in availableCommonFieldPresets"
+                                        :key="preset.key"
+                                        type="button"
+                                        class="btn btn-outline-secondary btn-sm"
+                                        @click="applyCommonFieldPreset(preset.key)"
+                                    >
+                                        {{ preset.label }}
+                                    </button>
+                                </div>
+                                <div class="form-text mt-2">
+                                    会自动填充标签、字段标识、占位提示和常用校验规则，适合快速搭建收集表单。
+                                </div>
+                            </div>
                             <div v-if="selectedElementType === 'input'" class="mt-3">
                                 <label class="form-label">字段类型</label>
                                 <div class="shortcut-grid">

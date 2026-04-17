@@ -74,6 +74,160 @@ const CHOICE_OPTION_PRESETS = [
         value: 'pro'
     }
 ];
+const COMMON_FIELD_PRESETS = [
+    {
+        key: 'contact_name',
+        label: '姓名',
+        types: ['input'],
+        props: {
+            label: '姓名',
+            fieldKey: 'contact_name',
+            inputType: 'text',
+            placeholder: '请输入姓名',
+            helperText: '请填写真实姓名，方便后续联系。',
+            validationPattern: '',
+            validationMessage: '',
+            minLength: '2',
+            maxLength: '20',
+            minValue: '',
+            maxValue: '',
+            required: true,
+            value: ''
+        }
+    },
+    {
+        key: 'contact_phone',
+        label: '手机号',
+        types: ['input'],
+        props: {
+            label: '手机号',
+            fieldKey: 'contact_phone',
+            inputType: 'tel',
+            placeholder: '请输入手机号',
+            helperText: '用于和您确认需求与回访进度。',
+            validationPattern: '^1\\d{10}$',
+            validationMessage: '请输入有效的 11 位手机号',
+            minLength: '11',
+            maxLength: '11',
+            minValue: '',
+            maxValue: '',
+            required: true,
+            value: ''
+        }
+    },
+    {
+        key: 'contact_email',
+        label: '邮箱',
+        types: ['input'],
+        props: {
+            label: '邮箱',
+            fieldKey: 'contact_email',
+            inputType: 'email',
+            placeholder: '请输入邮箱地址',
+            helperText: '我们会把方案或回执发送到这个邮箱。',
+            validationPattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+            validationMessage: '请输入有效的邮箱地址',
+            minLength: '',
+            maxLength: '80',
+            minValue: '',
+            maxValue: '',
+            required: true,
+            value: ''
+        }
+    },
+    {
+        key: 'company_name',
+        label: '公司',
+        types: ['input'],
+        props: {
+            label: '公司名称',
+            fieldKey: 'company_name',
+            inputType: 'text',
+            placeholder: '请输入公司名称',
+            helperText: '适合 B 端线索、商务合作或项目登记表。',
+            validationPattern: '',
+            validationMessage: '',
+            minLength: '',
+            maxLength: '60',
+            minValue: '',
+            maxValue: '',
+            required: false,
+            value: ''
+        }
+    },
+    {
+        key: 'job_title',
+        label: '职位',
+        types: ['input'],
+        props: {
+            label: '职位',
+            fieldKey: 'job_title',
+            inputType: 'text',
+            placeholder: '请输入职位',
+            helperText: '例如：市场负责人、运营经理、产品经理。',
+            validationPattern: '',
+            validationMessage: '',
+            minLength: '',
+            maxLength: '30',
+            minValue: '',
+            maxValue: '',
+            required: false,
+            value: ''
+        }
+    },
+    {
+        key: 'budget',
+        label: '预算',
+        types: ['input'],
+        props: {
+            label: '预算',
+            fieldKey: 'budget',
+            inputType: 'number',
+            placeholder: '请输入预算金额',
+            helperText: '建议填写预估预算，方便快速匹配方案。',
+            validationPattern: '^\\d+(\\.\\d+)?$',
+            validationMessage: '请输入数字',
+            minLength: '',
+            maxLength: '',
+            minValue: '0',
+            maxValue: '',
+            required: false,
+            value: ''
+        }
+    },
+    {
+        key: 'requirement',
+        label: '需求说明',
+        types: ['textarea'],
+        props: {
+            label: '需求说明',
+            fieldKey: 'requirement',
+            placeholder: '请描述项目背景、目标和预期效果',
+            helperText: '建议写清目标用户、核心诉求、上线时间等关键信息。',
+            rows: '5',
+            minLength: '10',
+            maxLength: '300',
+            required: true,
+            value: ''
+        }
+    },
+    {
+        key: 'remark',
+        label: '备注',
+        types: ['textarea'],
+        props: {
+            label: '备注',
+            fieldKey: 'remark',
+            placeholder: '请输入补充说明',
+            helperText: '可填写特殊要求、补充说明或其他信息。',
+            rows: '4',
+            minLength: '',
+            maxLength: '200',
+            required: false,
+            value: ''
+        }
+    }
+];
 const THEME_PRESETS = {
     forest: {
         name: '森绿',
@@ -1266,6 +1420,7 @@ createApp({
             requestMethodOptions: REQUEST_METHOD_OPTIONS,
             optionLayoutOptions: OPTION_LAYOUT_OPTIONS,
             choiceOptionPresets: CHOICE_OPTION_PRESETS,
+            commonFieldPresets: COMMON_FIELD_PRESETS,
             conditionOperatorOptions: CONDITION_OPERATOR_OPTIONS,
             themePresets: Object.entries(THEME_PRESETS).map(([key, preset]) => ({
                 key,
@@ -1773,6 +1928,13 @@ createApp({
 
             return this.selectedElement.props.inputType || 'text';
         },
+        availableCommonFieldPresets() {
+            if (!this.selectedElementType) {
+                return [];
+            }
+
+            return this.commonFieldPresets.filter((preset) => Array.isArray(preset.types) && preset.types.includes(this.selectedElementType));
+        },
         selectedOptionLayout() {
             if (!this.selectedElement || !['radio-group', 'checkbox-group'].includes(this.selectedElement.type)) {
                 return 'vertical';
@@ -2199,6 +2361,44 @@ createApp({
             }
 
             this.applySelectedProps(nextProps);
+        },
+        buildUniqueFieldKey(baseKey = '') {
+            const normalizedBaseKey = String(baseKey || 'field')
+                .trim()
+                .replace(/[^\w-]+/g, '_')
+                .replace(/^_+|_+$/g, '') || 'field';
+            const currentKey = this.selectedElementFieldKey || '';
+            const usedKeys = new Set(Object.keys(this.currentPageFieldDefinitionMap || {}));
+
+            if (!usedKeys.has(normalizedBaseKey) || currentKey === normalizedBaseKey) {
+                return normalizedBaseKey;
+            }
+
+            let index = 2;
+            let candidate = `${normalizedBaseKey}_${index}`;
+
+            while (usedKeys.has(candidate) && currentKey !== candidate) {
+                index += 1;
+                candidate = `${normalizedBaseKey}_${index}`;
+            }
+
+            return candidate;
+        },
+        applyCommonFieldPreset(presetKey) {
+            const preset = this.commonFieldPresets.find((item) => item.key === presetKey);
+
+            if (!preset || !this.selectedElement || !preset.types.includes(this.selectedElement.type)) {
+                return;
+            }
+
+            const nextProps = deepClone(preset.props || {});
+
+            if (nextProps.fieldKey) {
+                nextProps.fieldKey = this.buildUniqueFieldKey(nextProps.fieldKey);
+            }
+
+            this.applySelectedProps(nextProps);
+            this.setStatus(`已应用“${preset.label}”字段预设。`, 'success');
         },
         applyFieldTypePreset(inputType) {
             const presets = {
