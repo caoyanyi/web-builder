@@ -256,6 +256,81 @@ body {
     font-size: 14px;
 }
 
+.builder-step-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+    padding: 1rem 1.1rem;
+    border-radius: 18px;
+    border: 1px solid rgba(159, 195, 175, 0.45);
+    background: linear-gradient(180deg, #ffffff 0%, #f7fbf8 100%);
+}
+
+.builder-step-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--builder-text);
+}
+
+.builder-step-head span {
+    color: var(--builder-text-muted);
+    font-size: 0.84rem;
+}
+
+.builder-step-track {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.75rem;
+}
+
+.builder-step-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.7rem 0.8rem;
+    border-radius: 14px;
+    border: 1px solid rgba(215, 226, 214, 0.85);
+    background: rgba(248, 251, 247, 0.95);
+    color: var(--builder-text-muted);
+}
+
+.builder-step-item.is-active {
+    border-color: rgba(15, 118, 110, 0.28);
+    background: rgba(215, 243, 236, 0.78);
+    color: var(--builder-brand);
+}
+
+.builder-step-item.is-complete {
+    border-color: rgba(15, 118, 110, 0.18);
+    color: var(--builder-text);
+}
+
+.builder-step-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: 999px;
+    background: rgba(215, 226, 214, 0.9);
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.builder-step-item.is-active .builder-step-indicator,
+.builder-step-item.is-complete .builder-step-indicator {
+    background: var(--builder-brand);
+    color: #ffffff;
+}
+
+.builder-step-text {
+    font-size: 0.84rem;
+    line-height: 1.4;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
     .navigation ul {
@@ -288,6 +363,7 @@ class App {
     init() {
         this.bindEvents();
         window.builderSubmitAction = (trigger, config = {}) => this.handleSubmitAction(trigger, config);
+        window.builderStepAction = (trigger, direction = 'next') => this.handleStepAction(trigger, direction);
         this.loadPage(this.pages[0]?.name || 'home');
     }
     
@@ -325,6 +401,14 @@ class App {
             return `window.location.href=${JSON.stringify(actionValue || '#')}`;
         }
 
+        if (actionType === 'step-prev') {
+            return `window.builderStepAction(this, 'prev')`;
+        }
+
+        if (actionType === 'step-next') {
+            return `window.builderStepAction(this, 'next')`;
+        }
+
         if (actionType === 'submit') {
             return `window.builderSubmitAction(this, ${JSON.stringify({
                 successMessage: actionValue || '提交成功',
@@ -360,6 +444,56 @@ class App {
             });
     }
 
+    parseStepIndex(value = '1') {
+        const parsed = Number.parseInt(String(value || '1'), 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    }
+
+    getStepLabel(stepIndex = 1, stepTitle = '') {
+        const title = String(stepTitle || '').trim();
+        return title ? `第${stepIndex}步·${title}` : `第${stepIndex}步`;
+    }
+
+    collectStepDefinitions(elements = [], definitions = new Map()) {
+        (elements || []).forEach((element) => {
+            const props = element?.props || {};
+            const stepIndex = this.parseStepIndex(props.stepIndex || '1');
+            const current = definitions.get(stepIndex) || {
+                index: stepIndex,
+                title: ''
+            };
+
+            if (!current.title && String(props.stepTitle || '').trim()) {
+                current.title = String(props.stepTitle || '').trim();
+            }
+
+            definitions.set(stepIndex, current);
+
+            if (Array.isArray(element?.children) && element.children.length > 0) {
+                this.collectStepDefinitions(element.children, definitions);
+            }
+        });
+
+        return Array.from(definitions.values()).sort((left, right) => left.index - right.index);
+    }
+
+    buildStepProgressHtml(page = {}) {
+        const steps = this.collectStepDefinitions(page.elements || []);
+
+        if (steps.length <= 1 || steps.every((step) => step.index === 1)) {
+            return '';
+        }
+
+        const items = steps.map((step) => `
+            <div class="builder-step-item" data-step-item="${step.index}">
+                <span class="builder-step-indicator">${step.index}</span>
+                <span class="builder-step-text">${this.escapeHtmlAttribute(this.getStepLabel(step.index, step.title || ''))}</span>
+            </div>
+        `).join('');
+
+        return `<div class="builder-step-progress" data-step-progress="1"><div class="builder-step-head"><strong>分步表单</strong><span data-step-summary></span></div><div class="builder-step-track">${items}</div></div>`;
+    }
+
     getFieldValue(field) {
         const fieldKind = field.dataset.fieldKind || '';
 
@@ -379,12 +513,20 @@ class App {
         return Array.from((scope || document).querySelectorAll('[data-builder-field="true"]'));
     }
 
-    isFieldVisible(field) {
+    isFieldConditionVisible(field) {
         return !(field && typeof field.closest === 'function' && field.closest('[data-conditional-hidden="1"]'));
     }
 
-    getActiveFormFields(scope = document) {
-        return this.getFormFields(scope).filter((field) => this.isFieldVisible(field));
+    isFieldStepVisible(field) {
+        return !(field && typeof field.closest === 'function' && field.closest('[data-step-hidden="1"]'));
+    }
+
+    getCurrentStepFields(scope = document) {
+        return this.getFormFields(scope).filter((field) => this.isFieldConditionVisible(field) && this.isFieldStepVisible(field));
+    }
+
+    getSubmittableFields(scope = document) {
+        return this.getFormFields(scope).filter((field) => this.isFieldConditionVisible(field));
     }
 
     collectFormValues(scope = document) {
@@ -396,6 +538,23 @@ class App {
         });
 
         return values;
+    }
+
+    getPageNode(scope = document) {
+        if (scope && scope.classList && scope.classList.contains('page')) {
+            return scope;
+        }
+
+        return (scope && typeof scope.closest === 'function' ? scope.closest('.page') : null) || document;
+    }
+
+    getStepBlocks(scope = document) {
+        return Array.from((scope || document).querySelectorAll('[data-step-enabled="1"]'));
+    }
+
+    getCurrentStep(scope = document) {
+        const pageNode = this.getPageNode(scope);
+        return this.parseStepIndex(pageNode?.dataset?.currentStep || '1');
     }
 
     evaluateConditionRule(actualValue, operator = 'equals', expectedValue = '') {
@@ -451,6 +610,82 @@ class App {
             block.hidden = !isVisible;
             block.dataset.conditionalHidden = isVisible ? '0' : '1';
         });
+    }
+
+    refreshStepState(scope = document, forcedStep = null) {
+        const pageNode = this.getPageNode(scope);
+        const stepBlocks = this.getStepBlocks(pageNode);
+
+        if (stepBlocks.length === 0) {
+            return;
+        }
+
+        const stepDefinitions = Array.from(new Map(stepBlocks.map((block) => {
+            const stepIndex = this.parseStepIndex(block.dataset.stepIndex || '1');
+            return [stepIndex, {
+                index: stepIndex,
+                title: block.dataset.stepTitle || ''
+            }];
+        })).values()).sort((left, right) => left.index - right.index);
+        const minStep = stepDefinitions[0]?.index || 1;
+        const maxStep = stepDefinitions[stepDefinitions.length - 1]?.index || minStep;
+        const nextStep = forcedStep === null ? this.getCurrentStep(pageNode) : this.parseStepIndex(forcedStep);
+        const currentStep = Math.max(minStep, Math.min(nextStep, maxStep));
+
+        if (pageNode.dataset) {
+            pageNode.dataset.currentStep = String(currentStep);
+            pageNode.dataset.totalSteps = String(stepDefinitions.length);
+        }
+
+        stepBlocks.forEach((block) => {
+            const stepIndex = this.parseStepIndex(block.dataset.stepIndex || '1');
+            const isVisible = stepIndex === currentStep;
+            block.hidden = !isVisible;
+            block.dataset.stepHidden = isVisible ? '0' : '1';
+        });
+
+        Array.from(pageNode.querySelectorAll('[data-step-item]')).forEach((item) => {
+            const itemStep = this.parseStepIndex(item.dataset.stepItem || '1');
+            item.classList.toggle('is-active', itemStep === currentStep);
+            item.classList.toggle('is-complete', itemStep < currentStep);
+        });
+
+        const summary = pageNode.querySelector('[data-step-summary]');
+        if (summary) {
+            const activeDefinition = stepDefinitions.find((step) => step.index === currentStep) || stepDefinitions[0];
+            summary.textContent = activeDefinition ? this.getStepLabel(activeDefinition.index, activeDefinition.title || '') : `第${currentStep}步`;
+        }
+    }
+
+    validateFields(fields = []) {
+        const invalidField = (fields || []).find((field) => this.validateField(field));
+
+        if (!invalidField) {
+            return '';
+        }
+
+        const message = this.validateField(invalidField);
+        alert(message || '表单校验失败');
+        this.focusField(invalidField);
+        return message;
+    }
+
+    handleStepAction(trigger, direction = 'next') {
+        const scope = trigger.closest('.page') || document;
+        const currentStep = this.getCurrentStep(scope);
+        const totalSteps = Number(this.getPageNode(scope)?.dataset?.totalSteps || this.collectStepDefinitions(this.currentPage?.elements || []).length || 1);
+
+        if (direction === 'prev') {
+            this.refreshStepState(scope, Math.max(1, currentStep - 1));
+            return false;
+        }
+
+        if (this.validateFields(this.getCurrentStepFields(scope))) {
+            return false;
+        }
+
+        this.refreshStepState(scope, Math.min(totalSteps, currentStep + 1));
+        return false;
     }
 
     isEmptyFieldValue(value) {
@@ -605,24 +840,19 @@ class App {
 
     async handleSubmitAction(trigger, config = {}) {
         const scope = trigger.closest('.page') || document;
-        const fields = this.getActiveFormFields(scope);
-        const invalidField = fields.find((field) => this.validateField(field));
-
-        if (invalidField) {
-            const message = this.validateField(invalidField);
-            alert(message || '表单校验失败');
-            this.focusField(invalidField);
+        if (this.validateFields(this.getCurrentStepFields(scope))) {
             return false;
         }
 
         const formData = {};
-        fields.forEach((field) => {
+        const submittableFields = this.getSubmittableFields(scope);
+        submittableFields.forEach((field) => {
             const fieldKey = field.dataset.fieldKey || field.name || `field_${Object.keys(formData).length + 1}`;
             formData[fieldKey] = this.getFieldValue(field);
         });
 
         console.log('builder form submit', formData);
-        const fieldMeta = this.buildFieldMeta(fields);
+        const fieldMeta = this.buildFieldMeta(submittableFields);
 
         try {
             await this.submitFormData(formData, {
@@ -639,6 +869,7 @@ class App {
                 this.resetField(field);
             });
             this.refreshConditionalVisibility(scope);
+            this.refreshStepState(scope, 1);
         }
 
         alert(config.successMessage || '提交成功');
@@ -664,10 +895,12 @@ class App {
         app.innerHTML = this.generatePageHtml(page);
         this.loadPageScripts(page);
         this.refreshConditionalVisibility(app.querySelector('.page') || app);
+        this.refreshStepState(app.querySelector('.page') || app, 1);
     }
     
     generatePageHtml(page) {
         let html = `<div class="page" id="page-${page.name}">`;
+        html += this.buildStepProgressHtml(page);
         
         if (page.elements) {
             page.elements.forEach(element => {
@@ -681,32 +914,40 @@ class App {
     
     generateElementHtml(element) {
         const { type, props = {} } = element;
+        let html = '';
         
         switch (type) {
             case 'div':
                 const children = element.children ? element.children.map(child => this.generateElementHtml(child)).join('') : '';
-                return `<div class="${props.class || ''}" style="${props.style || ''}">${children}</div>`;
+                html = `<div class="${props.class || ''}" style="${props.style || ''}">${children}</div>`;
+                break;
 
             case 'row':
                 const rowChildren = element.children ? element.children.map(child => this.generateElementHtml(child)).join('') : '';
-                return `<div class="${props.class || ''}" style="display:flex;flex-wrap:wrap;${props.style || ''}">${rowChildren}</div>`;
+                html = `<div class="${props.class || ''}" style="display:flex;flex-wrap:wrap;${props.style || ''}">${rowChildren}</div>`;
+                break;
                 
             case 'text':
-                return `<p class="${props.class || ''}" style="${props.style || ''}">${props.content || ''}</p>`;
+                html = `<p class="${props.class || ''}" style="${props.style || ''}">${props.content || ''}</p>`;
+                break;
                 
             case 'image':
-                return `<img src="${props.src || ''}" class="${props.class || ''}" style="${props.style || ''}" alt="${props.alt || ''}">`;
+                html = `<img src="${props.src || ''}" class="${props.class || ''}" style="${props.style || ''}" alt="${props.alt || ''}">`;
+                break;
                 
             case 'button':
-                return `<button class="${props.class || ''}" style="${props.style || ''}" onclick="${this.escapeHtmlAttribute(this.getButtonActionCode(props))}">${props.text || '按钮'}</button>`;
+                html = `<button class="${props.class || ''}" style="${props.style || ''}" onclick="${this.escapeHtmlAttribute(this.getButtonActionCode(props))}">${props.text || '按钮'}</button>`;
+                break;
 
             case 'input':
                 const inputLabel = props.label ? `<label style="display:block;margin-bottom:6px;font-weight:600;">${props.label}${props.required ? '<span style="color:#c2410c;"> *</span>' : ''}</label>` : '';
-                return `<div style="${props.width ? `width:${props.width};` : ''}">${inputLabel}<input type="${props.inputType || 'text'}" data-builder-field="true" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || props.placeholder || '输入框')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'input'}`)}" data-pattern="${this.escapeHtmlAttribute(props.validationPattern || '')}" data-validation-message="${this.escapeHtmlAttribute(props.validationMessage || '')}" class="${props.class || ''}" style="${props.style || ''}" placeholder="${props.placeholder || ''}" value="${props.value || ''}"></div>`;
+                html = `<div style="${props.width ? `width:${props.width};` : ''}">${inputLabel}<input type="${props.inputType || 'text'}" data-builder-field="true" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || props.placeholder || '输入框')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'input'}`)}" data-pattern="${this.escapeHtmlAttribute(props.validationPattern || '')}" data-validation-message="${this.escapeHtmlAttribute(props.validationMessage || '')}" class="${props.class || ''}" style="${props.style || ''}" placeholder="${props.placeholder || ''}" value="${props.value || ''}"></div>`;
+                break;
 
             case 'textarea':
                 const textareaLabel = props.label ? `<label style="display:block;margin-bottom:6px;font-weight:600;">${props.label}${props.required ? '<span style="color:#c2410c;"> *</span>' : ''}</label>` : '';
-                return `<div style="${props.width ? `width:${props.width};` : ''}">${textareaLabel}<textarea data-builder-field="true" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || props.placeholder || '文本域')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'textarea'}`)}" data-pattern="${this.escapeHtmlAttribute(props.validationPattern || '')}" data-validation-message="${this.escapeHtmlAttribute(props.validationMessage || '')}" class="${props.class || ''}" style="${props.style || ''}" rows="${props.rows || '4'}" placeholder="${props.placeholder || ''}">${props.value || ''}</textarea></div>`;
+                html = `<div style="${props.width ? `width:${props.width};` : ''}">${textareaLabel}<textarea data-builder-field="true" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || props.placeholder || '文本域')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'textarea'}`)}" data-pattern="${this.escapeHtmlAttribute(props.validationPattern || '')}" data-validation-message="${this.escapeHtmlAttribute(props.validationMessage || '')}" class="${props.class || ''}" style="${props.style || ''}" rows="${props.rows || '4'}" placeholder="${props.placeholder || ''}">${props.value || ''}</textarea></div>`;
+                break;
 
             case 'select':
                 const selectLabel = props.label ? `<label style="display:block;margin-bottom:6px;font-weight:600;">${props.label}${props.required ? '<span style="color:#c2410c;"> *</span>' : ''}</label>` : '';
@@ -714,7 +955,8 @@ class App {
                 const selectMarkup = [`<option value="">${this.escapeHtmlAttribute(props.placeholder || '请选择')}</option>`]
                     .concat(selectOptions.map((option) => `<option value="${this.escapeHtmlAttribute(option.value)}"${String(props.value || '') === option.value ? ' selected' : ''}>${this.escapeHtmlAttribute(option.label)}</option>`))
                     .join('');
-                return `<div style="${props.width ? `width:${props.width};` : ''}">${selectLabel}<select data-builder-field="true" data-field-kind="select" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || props.placeholder || '下拉选择')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'select'}`)}" class="${props.class || 'form-control'}" style="${props.style || ''}">${selectMarkup}</select></div>`;
+                html = `<div style="${props.width ? `width:${props.width};` : ''}">${selectLabel}<select data-builder-field="true" data-field-kind="select" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || props.placeholder || '下拉选择')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'select'}`)}" class="${props.class || 'form-control'}" style="${props.style || ''}">${selectMarkup}</select></div>`;
+                break;
 
             case 'radio-group':
                 const radioLabel = props.label ? `<label style="display:block;margin-bottom:6px;font-weight:600;">${props.label}${props.required ? '<span style="color:#c2410c;"> *</span>' : ''}</label>` : '';
@@ -723,7 +965,8 @@ class App {
                 const radioMarkup = radioOptions.length > 0
                     ? radioOptions.map((option) => `<label class="choice-option"><input type="radio" name="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'radio'}`)}" value="${this.escapeHtmlAttribute(option.value)}"${String(props.value || '') === option.value ? ' checked' : ''}> <span>${this.escapeHtmlAttribute(option.label)}</span></label>`).join('')
                     : '<div class="text-muted">请先配置选项</div>';
-                return `<div style="${props.width ? `width:${props.width};` : ''}">${radioLabel}<div data-builder-field="true" data-field-kind="radio-group" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || '单选组')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'radio'}`)}" class="${[radioLayoutClass, props.class || ''].filter(Boolean).join(' ')}" style="${props.style || ''}">${radioMarkup}</div></div>`;
+                html = `<div style="${props.width ? `width:${props.width};` : ''}">${radioLabel}<div data-builder-field="true" data-field-kind="radio-group" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || '单选组')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'radio'}`)}" class="${[radioLayoutClass, props.class || ''].filter(Boolean).join(' ')}" style="${props.style || ''}">${radioMarkup}</div></div>`;
+                break;
 
             case 'checkbox-group':
                 const checkboxLabel = props.label ? `<label style="display:block;margin-bottom:6px;font-weight:600;">${props.label}${props.required ? '<span style="color:#c2410c;"> *</span>' : ''}</label>` : '';
@@ -733,17 +976,36 @@ class App {
                 const checkboxMarkup = checkboxOptions.length > 0
                     ? checkboxOptions.map((option) => `<label class="choice-option"><input type="checkbox" value="${this.escapeHtmlAttribute(option.value)}"${checkboxValues.includes(option.value) ? ' checked' : ''}> <span>${this.escapeHtmlAttribute(option.label)}</span></label>`).join('')
                     : '<div class="text-muted">请先配置选项</div>';
-                return `<div style="${props.width ? `width:${props.width};` : ''}">${checkboxLabel}<div data-builder-field="true" data-field-kind="checkbox-group" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || '多选组')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'checkbox'}`)}" class="${[checkboxLayoutClass, props.class || ''].filter(Boolean).join(' ')}" style="${props.style || ''}">${checkboxMarkup}</div></div>`;
+                html = `<div style="${props.width ? `width:${props.width};` : ''}">${checkboxLabel}<div data-builder-field="true" data-field-kind="checkbox-group" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || '多选组')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'checkbox'}`)}" class="${[checkboxLayoutClass, props.class || ''].filter(Boolean).join(' ')}" style="${props.style || ''}">${checkboxMarkup}</div></div>`;
+                break;
 
             case 'spacer':
-                return `<div class="${props.class || ''}" style="height:${props.height || '32px'};${props.style || ''}"></div>`;
+                html = `<div class="${props.class || ''}" style="height:${props.height || '32px'};${props.style || ''}"></div>`;
+                break;
                 
             case 'form':
-                return `<form class="${props.class || ''}" style="${props.style || ''}">${props.content || ''}</form>`;
+                html = `<form class="${props.class || ''}" style="${props.style || ''}">${props.content || ''}</form>`;
+                break;
                 
             default:
-                return `<!-- 未知元素类型: ${type} -->`;
+                html = `<!-- 未知元素类型: ${type} -->`;
+                break;
         }
+
+        return this.wrapStepHtml(this.wrapConditionalHtml(html, props), props);
+    }
+
+    wrapConditionalHtml(html, props = {}) {
+        if (!props.conditionEnabled || !props.conditionFieldKey) {
+            return html;
+        }
+
+        return `<div data-visibility-enabled="1" data-visibility-field="${this.escapeHtmlAttribute(props.conditionFieldKey || '')}" data-visibility-operator="${this.escapeHtmlAttribute(props.conditionOperator || 'equals')}" data-visibility-value="${this.escapeHtmlAttribute(props.conditionValue || '')}">${html}</div>`;
+    }
+
+    wrapStepHtml(html, props = {}) {
+        const stepIndex = this.parseStepIndex(props.stepIndex || '1');
+        return `<div data-step-enabled="1" data-step-index="${stepIndex}" data-step-title="${this.escapeHtmlAttribute(props.stepTitle || '')}">${html}</div>`;
     }
     
     loadPageScripts(page) {
@@ -785,6 +1047,7 @@ JS;
     {
         $elements = $page['elements'] ?? [];
         $html = "<div class=\"page\" id=\"page-{$page['name']}\">\n";
+        $html .= $this->buildStepProgressMarkup($page);
         
         foreach ($elements as $element) {
             $html .= $this->generateElementHtml($element);
@@ -1009,6 +1272,14 @@ JS;
             return 'window.location.href=' . json_encode($target, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         }
 
+        if ($actionType === 'step-prev') {
+            return "window.builderStepAction(this,'prev')";
+        }
+
+        if ($actionType === 'step-next') {
+            return "window.builderStepAction(this,'next')";
+        }
+
         if ($actionType === 'submit') {
             $message = $actionValue ?: '提交成功';
             $config = [
@@ -1028,14 +1299,74 @@ JS;
     private function wrapConditionalHtml(string $html, array $props): string
     {
         if (empty($props['conditionEnabled']) || empty($props['conditionFieldKey'])) {
-            return $html;
+            return $this->wrapStepHtml($html, $props);
         }
 
         $fieldKey = htmlspecialchars((string) ($props['conditionFieldKey'] ?? ''), ENT_QUOTES, 'UTF-8');
         $operator = htmlspecialchars((string) ($props['conditionOperator'] ?? 'equals'), ENT_QUOTES, 'UTF-8');
         $value = htmlspecialchars((string) ($props['conditionValue'] ?? ''), ENT_QUOTES, 'UTF-8');
 
-        return "    <div data-visibility-enabled=\"1\" data-visibility-field=\"{$fieldKey}\" data-visibility-operator=\"{$operator}\" data-visibility-value=\"{$value}\">\n{$html}    </div>\n";
+        $wrappedHtml = "    <div data-visibility-enabled=\"1\" data-visibility-field=\"{$fieldKey}\" data-visibility-operator=\"{$operator}\" data-visibility-value=\"{$value}\">\n{$html}    </div>\n";
+        return $this->wrapStepHtml($wrappedHtml, $props);
+    }
+
+    private function wrapStepHtml(string $html, array $props): string
+    {
+        $stepIndex = $this->resolveStepIndex($props);
+        $stepTitle = htmlspecialchars((string) ($props['stepTitle'] ?? ''), ENT_QUOTES, 'UTF-8');
+        return "    <div data-step-enabled=\"1\" data-step-index=\"{$stepIndex}\" data-step-title=\"{$stepTitle}\">\n{$html}    </div>\n";
+    }
+
+    private function resolveStepIndex(array $props): int
+    {
+        $stepIndex = (int) ($props['stepIndex'] ?? 1);
+        return $stepIndex > 0 ? $stepIndex : 1;
+    }
+
+    private function buildStepDefinitions(array $elements, array &$definitions = []): array
+    {
+        foreach ($elements as $element) {
+            $props = $element['props'] ?? [];
+            $stepIndex = $this->resolveStepIndex($props);
+
+            if (!isset($definitions[$stepIndex])) {
+                $definitions[$stepIndex] = [
+                    'index' => $stepIndex,
+                    'title' => '',
+                ];
+            }
+
+            if ($definitions[$stepIndex]['title'] === '' && !empty($props['stepTitle'])) {
+                $definitions[$stepIndex]['title'] = trim((string) $props['stepTitle']);
+            }
+
+            if (!empty($element['children']) && is_array($element['children'])) {
+                $this->buildStepDefinitions($element['children'], $definitions);
+            }
+        }
+
+        ksort($definitions);
+        return array_values($definitions);
+    }
+
+    private function buildStepProgressMarkup(array $page): string
+    {
+        $definitions = $this->buildStepDefinitions($page['elements'] ?? []);
+
+        if (count($definitions) <= 1 && (($definitions[0]['index'] ?? 1) === 1)) {
+            return '';
+        }
+
+        $itemsHtml = '';
+        foreach ($definitions as $definition) {
+            $index = (int) ($definition['index'] ?? 1);
+            $title = trim((string) ($definition['title'] ?? ''));
+            $label = $title !== '' ? "第{$index}步·{$title}" : "第{$index}步";
+            $safeLabel = htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
+            $itemsHtml .= "        <div class=\"builder-step-item\" data-step-item=\"{$index}\"><span class=\"builder-step-indicator\">{$index}</span><span class=\"builder-step-text\">{$safeLabel}</span></div>\n";
+        }
+
+        return "    <div class=\"builder-step-progress\" data-step-progress=\"1\">\n        <div class=\"builder-step-head\"><strong>分步表单</strong><span data-step-summary></span></div>\n        <div class=\"builder-step-track\">\n{$itemsHtml}        </div>\n    </div>\n";
     }
 
     private function buildSelectOptionsHtml($rawOptions, $selectedValue, $placeholder): string

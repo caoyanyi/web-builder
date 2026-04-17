@@ -411,6 +411,79 @@ body {
     text-align: center;
 }
 
+.builder-step-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.15rem;
+    padding: 1rem 1.1rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(159, 195, 175, 0.45);
+    background: linear-gradient(180deg, #ffffff 0%, #f7fbf8 100%);
+}
+
+.builder-step-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.builder-step-head span {
+    color: var(--builder-text-muted);
+    font-size: 0.84rem;
+}
+
+.builder-step-track {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.75rem;
+}
+
+.builder-step-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.7rem 0.8rem;
+    border-radius: 0.95rem;
+    border: 1px solid rgba(215, 226, 214, 0.85);
+    background: rgba(248, 251, 247, 0.95);
+    color: var(--builder-text-muted);
+}
+
+.builder-step-item.is-active {
+    border-color: rgba(15, 118, 110, 0.28);
+    background: rgba(215, 243, 236, 0.78);
+    color: var(--builder-brand);
+}
+
+.builder-step-item.is-complete {
+    color: var(--builder-text);
+}
+
+.builder-step-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: 999px;
+    background: rgba(215, 226, 214, 0.9);
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.builder-step-item.is-active .builder-step-indicator,
+.builder-step-item.is-complete .builder-step-indicator {
+    background: var(--builder-brand);
+    color: #ffffff;
+}
+
+.builder-step-text {
+    font-size: 0.84rem;
+    line-height: 1.4;
+}
+
 .submission-ranking-list {
     display: flex;
     flex-direction: column;
@@ -1317,6 +1390,10 @@ body {
         grid-template-columns: 1fr;
     }
 
+    .builder-step-track {
+        grid-template-columns: 1fr;
+    }
+
     .submission-detail-meta {
         grid-template-columns: 1fr;
     }
@@ -1357,6 +1434,11 @@ body {
     .submission-distribution-meta {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .builder-step-head {
+        flex-direction: column;
+        align-items: flex-start;
     }
 
     .submission-trend-chart {

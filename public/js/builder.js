@@ -2,7 +2,7 @@ const { createApp } = Vue;
 
 const CONTAINER_TYPES = ['div', 'row'];
 const FORM_FIELD_TYPES = ['input', 'textarea', 'select', 'radio-group', 'checkbox-group'];
-const PROP_ORDER = ['content', 'text', 'label', 'required', 'placeholder', 'value', 'rows', 'fieldKey', 'conditionEnabled', 'conditionFieldKey', 'conditionOperator', 'conditionValue', 'inputType', 'options', 'optionLayout', 'validationPattern', 'validationMessage', 'height', 'src', 'alt', 'class', 'width', 'style', 'actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitResetForm', 'submitRedirectUrl'];
+const PROP_ORDER = ['content', 'text', 'label', 'required', 'placeholder', 'value', 'rows', 'fieldKey', 'stepIndex', 'stepTitle', 'conditionEnabled', 'conditionFieldKey', 'conditionOperator', 'conditionValue', 'inputType', 'options', 'optionLayout', 'validationPattern', 'validationMessage', 'height', 'src', 'alt', 'class', 'width', 'style', 'actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitResetForm', 'submitRedirectUrl'];
 const HISTORY_LIMIT = 60;
 const DRAG_KIND_COMPONENT = 'component';
 const DRAG_KIND_ELEMENT = 'existing-element';
@@ -14,10 +14,16 @@ const DEFAULT_CONDITION_PROPS = {
     conditionOperator: 'equals',
     conditionValue: ''
 };
+const DEFAULT_STEP_PROPS = {
+    stepIndex: '1',
+    stepTitle: ''
+};
 const BUTTON_ACTION_OPTIONS = [
     { value: 'none', label: '无动作' },
     { value: 'message', label: '提示消息' },
     { value: 'link', label: '跳转链接' },
+    { value: 'step-prev', label: '上一步' },
+    { value: 'step-next', label: '下一步' },
     { value: 'submit', label: '提交表单' }
 ];
 const INPUT_TYPE_OPTIONS = [
@@ -567,9 +573,20 @@ function parseChoiceValues(value) {
 
 function applyConditionalDefaults(props = {}) {
     return {
+        ...DEFAULT_STEP_PROPS,
         ...DEFAULT_CONDITION_PROPS,
         ...(props || {})
     };
+}
+
+function parseStepIndex(value = '1') {
+    const parsed = Number.parseInt(String(value || '1'), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function getStepLabel(stepIndex = 1, stepTitle = '') {
+    const title = String(stepTitle || '').trim();
+    return title ? `第${stepIndex}步·${title}` : `第${stepIndex}步`;
 }
 
 function normalizeConditionOperator(operator = 'equals') {
@@ -655,6 +672,10 @@ function describeConditionRule(props = {}, fieldDefinitions = {}) {
     return `${fieldLabel}${operatorLabel}${props.conditionValue || '未设置'}`;
 }
 
+function describeStepRule(props = {}) {
+    return getStepLabel(parseStepIndex(props.stepIndex || '1'), props.stepTitle || '');
+}
+
 function isContainerType(type) {
     return CONTAINER_TYPES.includes(type);
 }
@@ -690,6 +711,10 @@ const ComponentRenderer = {
         fieldDefinitions: {
             type: Object,
             default: () => ({})
+        },
+        stepDefinitions: {
+            type: Array,
+            default: () => []
         }
     },
     emits: ['select-element', 'remove-element', 'duplicate-element', 'move-element', 'insert-drop', 'container-drop', 'preview-drop-target'],
@@ -751,6 +776,8 @@ const ComponentRenderer = {
             const labels = {
                 message: '提示消息',
                 link: '跳转链接',
+                'step-prev': '上一步',
+                'step-next': '下一步',
                 submit: '提交表单'
             };
 
@@ -773,6 +800,17 @@ const ComponentRenderer = {
         },
         visibilitySummary() {
             return describeConditionRule(this.element.props || {}, this.fieldDefinitions || {});
+        },
+        stepSummary() {
+            const props = this.element.props || {};
+            const stepIndex = parseStepIndex(props.stepIndex || '1');
+            const stepTitle = String(props.stepTitle || '').trim();
+
+            if (this.stepDefinitions.length <= 1 && stepIndex === 1 && !stepTitle) {
+                return '';
+            }
+
+            return describeStepRule(props);
         }
     },
     methods: {
@@ -854,6 +892,7 @@ const ComponentRenderer = {
         >
             <div class="builder-node-toolbar">
                 <span class="builder-node-badge">{{ typeLabel }}</span>
+                <span v-if="stepSummary" class="status-pill">{{ stepSummary }}</span>
                 <span v-if="visibilitySummary" class="status-pill">{{ visibilitySummary }}</span>
 
                 <div class="builder-node-actions">
@@ -895,6 +934,7 @@ const ComponentRenderer = {
                     :selected-element-id="selectedElementId"
                     :drop-state="dropState && String(dropState.targetId) === String(child.id) ? dropState : null"
                     :field-definitions="fieldDefinitions"
+                    :step-definitions="stepDefinitions"
                     @select-element="$emit('select-element', $event)"
                     @remove-element="$emit('remove-element', $event)"
                     @duplicate-element="$emit('duplicate-element', $event)"
@@ -1160,6 +1200,8 @@ createApp({
                 value: '默认值',
                 rows: '可视行数',
                 fieldKey: '字段标识',
+                stepIndex: '所属步骤',
+                stepTitle: '步骤标题',
                 inputType: '字段类型',
                 options: '选项配置',
                 optionLayout: '选项排布',
@@ -1191,6 +1233,8 @@ createApp({
                 value: 'text',
                 rows: 'number',
                 fieldKey: 'text',
+                stepIndex: 'number',
+                stepTitle: 'text',
                 inputType: 'text',
                 options: 'text',
                 optionLayout: 'text',
@@ -1634,6 +1678,12 @@ createApp({
 
             return this.projectName || '未命名项目';
         },
+        currentPageStepCatalog() {
+            return this.buildPageStepCatalog(this.currentPageElements);
+        },
+        isCurrentPageMultiStep() {
+            return this.currentPageStepCatalog.length > 1 || this.currentPageStepCatalog.some((step) => step.index > 1);
+        },
         editablePropFields() {
             if (!this.selectedElement || !this.selectedElement.props) {
                 return [];
@@ -1646,7 +1696,7 @@ createApp({
             ];
             const textareaKeys = new Set(['style', 'options']);
             const checkboxKeys = new Set(['required', 'submitResetForm']);
-            const hiddenKeys = new Set(['actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitRedirectUrl', 'submitResetForm', 'conditionEnabled', 'conditionFieldKey', 'conditionOperator', 'conditionValue']);
+            const hiddenKeys = new Set(['actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitRedirectUrl', 'submitResetForm', 'conditionEnabled', 'conditionFieldKey', 'conditionOperator', 'conditionValue', 'stepIndex', 'stepTitle']);
             const selectKeys = new Set(['inputType', 'optionLayout', 'submitMethod']);
 
             if (this.selectedElement.type === 'text') {
@@ -1673,6 +1723,12 @@ createApp({
         },
         selectedElementType() {
             return this.selectedElement ? this.selectedElement.type : '';
+        },
+        selectedElementStepIndex() {
+            return this.selectedElement ? parseStepIndex(this.selectedElement.props.stepIndex || '1') : 1;
+        },
+        selectedElementStepLabel() {
+            return this.selectedElement ? getStepLabel(this.selectedElementStepIndex, this.selectedElement.props.stepTitle || '') : '';
         },
         selectedElementFieldKey() {
             return resolveElementFieldKey(this.selectedElement);
@@ -1725,6 +1781,7 @@ createApp({
         window.addEventListener('keydown', this.handleKeydown);
         window.addEventListener('dragend', this.clearDropTarget);
         window.builderSubmitAction = (trigger, config = {}) => this.handleBuilderSubmitAction(trigger, config);
+        window.builderStepAction = (trigger, direction = 'next') => this.handleBuilderStepAction(trigger, direction);
         this.$nextTick(() => {
             this.setupPreviewStageListeners();
         });
@@ -1752,6 +1809,10 @@ createApp({
 
         if (window.builderSubmitAction) {
             delete window.builderSubmitAction;
+        }
+
+        if (window.builderStepAction) {
+            delete window.builderStepAction;
         }
     },
     methods: {
@@ -1988,12 +2049,14 @@ createApp({
                 none: '',
                 message: '操作成功',
                 link: '/pages/index/index',
+                'step-prev': '',
+                'step-next': '',
                 submit: '提交成功'
             };
 
             const nextProps = {
                 actionType,
-                actionValue: actionType === 'none'
+                actionValue: ['none', 'step-prev', 'step-next'].includes(actionType)
                     ? ''
                     : (this.selectedElement && this.selectedElement.props.actionValue) || defaults[actionType] || ''
             };
@@ -2232,6 +2295,14 @@ createApp({
                 return '例如：https://example.com 或 /pages/detail/detail';
             }
 
+            if (actionType === 'step-prev') {
+                return '上一步不需要额外内容';
+            }
+
+            if (actionType === 'step-next') {
+                return '下一步不需要额外内容';
+            }
+
             if (actionType === 'submit') {
                 return '例如：提交成功，我们会尽快联系你';
             }
@@ -2248,6 +2319,10 @@ createApp({
             const label = this.getButtonActionLabel(actionType);
             const value = props.actionValue || '';
             const extras = [];
+
+            if (actionType === 'step-prev' || actionType === 'step-next') {
+                return label;
+            }
 
             if (actionType === 'submit' && props.submitResetForm) {
                 extras.push('提交后清空');
@@ -2351,6 +2426,40 @@ createApp({
                     this.collectFieldDefinitions(element.children, page, definitions);
                 }
             });
+        },
+        buildPageStepCatalog(elements = []) {
+            const stepMap = new Map();
+
+            const visit = (items) => {
+                (items || []).forEach((element) => {
+                    const props = element && element.props ? element.props : {};
+                    const stepIndex = parseStepIndex(props.stepIndex || '1');
+                    const current = stepMap.get(stepIndex) || {
+                        index: stepIndex,
+                        title: '',
+                        label: ''
+                    };
+
+                    if (!current.title && String(props.stepTitle || '').trim()) {
+                        current.title = String(props.stepTitle || '').trim();
+                    }
+
+                    stepMap.set(stepIndex, current);
+
+                    if (Array.isArray(element.children) && element.children.length > 0) {
+                        visit(element.children);
+                    }
+                });
+            };
+
+            visit(elements);
+
+            return Array.from(stepMap.values())
+                .sort((left, right) => left.index - right.index)
+                .map((step) => ({
+                    ...step,
+                    label: getStepLabel(step.index, step.title)
+                }));
         },
         getFieldDefinition(fieldKey) {
             return this.fieldDefinitionMap[fieldKey] || null;
@@ -3548,6 +3657,7 @@ createApp({
                     ? (event.target.closest('.page') || stage)
                     : stage;
                 this.refreshPreviewConditionalVisibility(scope);
+                this.refreshPreviewStepState(scope);
             };
             stage.addEventListener('input', this.previewStageInteractionHandler);
             stage.addEventListener('change', this.previewStageInteractionHandler);
@@ -3568,11 +3678,17 @@ createApp({
         getPreviewFields(scope) {
             return Array.from((scope || this.$refs.previewStage || document).querySelectorAll('[data-builder-field="true"]'));
         },
-        isPreviewFieldVisible(field) {
+        isPreviewFieldConditionVisible(field) {
             return !(field && typeof field.closest === 'function' && field.closest('[data-conditional-hidden="1"]'));
         },
-        getActivePreviewFields(scope) {
-            return this.getPreviewFields(scope).filter((field) => this.isPreviewFieldVisible(field));
+        isPreviewFieldStepVisible(field) {
+            return !(field && typeof field.closest === 'function' && field.closest('[data-step-hidden="1"]'));
+        },
+        getCurrentPreviewFields(scope) {
+            return this.getPreviewFields(scope).filter((field) => this.isPreviewFieldConditionVisible(field) && this.isPreviewFieldStepVisible(field));
+        },
+        getSubmittablePreviewFields(scope) {
+            return this.getPreviewFields(scope).filter((field) => this.isPreviewFieldConditionVisible(field));
         },
         async requestBlob(url, payload) {
             const response = await fetch(url, {
@@ -3623,6 +3739,81 @@ createApp({
 
             return fieldValues;
         },
+        getPreviewStepBlocks(scope) {
+            return Array.from((scope || this.$refs.previewStage || document).querySelectorAll('[data-step-enabled="1"]'));
+        },
+        getPreviewPageNode(scope) {
+            if (scope && scope.classList && scope.classList.contains('page')) {
+                return scope;
+            }
+
+            return (scope && typeof scope.closest === 'function' ? scope.closest('.page') : null) || this.$refs.previewStage || document;
+        },
+        getPreviewCurrentStep(scope) {
+            const pageNode = this.getPreviewPageNode(scope);
+            return parseStepIndex(pageNode && pageNode.dataset ? pageNode.dataset.currentStep || '1' : '1');
+        },
+        refreshPreviewStepState(scope, forcedStep = null) {
+            const pageNode = this.getPreviewPageNode(scope);
+            const stepBlocks = this.getPreviewStepBlocks(pageNode);
+
+            if (stepBlocks.length === 0) {
+                return;
+            }
+
+            const stepDefinitions = Array.from(new Map(stepBlocks.map((block) => {
+                const stepIndex = parseStepIndex(block.dataset.stepIndex || '1');
+                return [stepIndex, {
+                    index: stepIndex,
+                    title: block.dataset.stepTitle || ''
+                }];
+            })).values()).sort((left, right) => left.index - right.index);
+            const totalSteps = stepDefinitions.length;
+            const minStep = stepDefinitions[0] ? stepDefinitions[0].index : 1;
+            const maxStep = stepDefinitions[totalSteps - 1] ? stepDefinitions[totalSteps - 1].index : minStep;
+            const nextStep = forcedStep === null ? this.getPreviewCurrentStep(pageNode) : parseStepIndex(forcedStep);
+            const currentStep = Math.max(minStep, Math.min(nextStep, maxStep));
+
+            if (pageNode.dataset) {
+                pageNode.dataset.currentStep = String(currentStep);
+                pageNode.dataset.totalSteps = String(totalSteps);
+            }
+
+            stepBlocks.forEach((block) => {
+                const stepIndex = parseStepIndex(block.dataset.stepIndex || '1');
+                const isVisible = stepIndex === currentStep;
+                block.hidden = !isVisible;
+                block.dataset.stepHidden = isVisible ? '0' : '1';
+            });
+
+            Array.from(pageNode.querySelectorAll('[data-step-item]')).forEach((item) => {
+                const itemStep = parseStepIndex(item.dataset.stepItem || '1');
+                item.classList.toggle('is-active', itemStep === currentStep);
+                item.classList.toggle('is-complete', itemStep < currentStep);
+            });
+
+            const summaryNode = pageNode.querySelector('[data-step-summary]');
+            if (summaryNode) {
+                const activeDefinition = stepDefinitions.find((step) => step.index === currentStep) || stepDefinitions[0];
+                summaryNode.textContent = activeDefinition ? getStepLabel(activeDefinition.index, activeDefinition.title) : `第${currentStep}步`;
+            }
+        },
+        refreshAllPreviewStepStates() {
+            const stage = this.$refs.previewStage;
+
+            if (!stage) {
+                return;
+            }
+
+            const pages = Array.from(stage.querySelectorAll('.page'));
+
+            if (pages.length === 0) {
+                this.refreshPreviewStepState(stage, 1);
+                return;
+            }
+
+            pages.forEach((page) => this.refreshPreviewStepState(page, 1));
+        },
         refreshPreviewConditionalVisibility(scope) {
             const container = scope || this.$refs.previewStage || document;
             const conditionalBlocks = Array.from(container.querySelectorAll('[data-visibility-enabled="1"]'));
@@ -3660,6 +3851,18 @@ createApp({
             }
 
             pages.forEach((page) => this.refreshPreviewConditionalVisibility(page));
+        },
+        validatePreviewFields(fields = []) {
+            const invalidField = (fields || []).find((field) => this.validatePreviewField(field));
+
+            if (!invalidField) {
+                return '';
+            }
+
+            const message = this.validatePreviewField(invalidField);
+            window.alert(message || '表单校验失败');
+            this.focusPreviewField(invalidField);
+            return message;
         },
         isPreviewFieldEmpty(value) {
             return Array.isArray(value) ? value.length === 0 : !String(value || '').trim();
@@ -3766,20 +3969,33 @@ createApp({
                 body: payload
             });
         },
+        handleBuilderStepAction(trigger, direction = 'next') {
+            const scope = trigger.closest('.page') || this.$refs.previewStage || document;
+            const currentStep = this.getPreviewCurrentStep(scope);
+            const totalSteps = Number((this.getPreviewPageNode(scope).dataset || {}).totalSteps || this.currentPageStepCatalog.length || 1);
+
+            if (direction === 'prev') {
+                this.refreshPreviewStepState(scope, Math.max(1, currentStep - 1));
+                return false;
+            }
+
+            if (this.validatePreviewFields(this.getCurrentPreviewFields(scope))) {
+                return false;
+            }
+
+            this.refreshPreviewStepState(scope, Math.min(totalSteps, currentStep + 1));
+            return false;
+        },
         async handleBuilderSubmitAction(trigger, config = {}) {
             const scope = trigger.closest('.page') || document;
-            const fields = this.getActivePreviewFields(scope);
-            const invalidField = fields.find((field) => this.validatePreviewField(field));
+            const currentFields = this.getCurrentPreviewFields(scope);
 
-            if (invalidField) {
-                const message = this.validatePreviewField(invalidField);
-                window.alert(message || '表单校验失败');
-                this.focusPreviewField(invalidField);
+            if (this.validatePreviewFields(currentFields)) {
                 return false;
             }
 
             const formData = {};
-            fields.forEach((field) => {
+            this.getSubmittablePreviewFields(scope).forEach((field) => {
                 const fieldKey = field.dataset.fieldKey || `field_${Object.keys(formData).length + 1}`;
                 formData[fieldKey] = this.getPreviewFieldValue(field);
             });
@@ -3801,6 +4017,7 @@ createApp({
                     this.resetPreviewField(field);
                 });
                 this.refreshPreviewConditionalVisibility(scope);
+                this.refreshPreviewStepState(scope, 1);
             }
 
             window.alert(config.successMessage || '提交成功');
@@ -4025,6 +4242,7 @@ createApp({
                 this.$nextTick(() => {
                     this.setupPreviewStageListeners();
                     this.refreshAllPreviewConditionalVisibility();
+                    this.refreshAllPreviewStepStates();
                 });
                 this.setStatus('预览内容已更新。', 'success');
             } catch (error) {
@@ -4079,6 +4297,10 @@ createApp({
 
         if (window.builderSubmitAction) {
             delete window.builderSubmitAction;
+        }
+
+        if (window.builderStepAction) {
+            delete window.builderStepAction;
         }
     }
 }).mount('#app');

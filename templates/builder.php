@@ -722,6 +722,7 @@
                                 :selected-element-id="selectedElementId"
                                 :drop-state="getDropStateForElement(element.id)"
                                 :field-definitions="currentPageFieldDefinitionMap"
+                                :step-definitions="currentPageStepCatalog"
                                 @select-element="selectElement"
                                 @remove-element="removeElement"
                                 @duplicate-element="duplicateElement"
@@ -845,12 +846,12 @@
                                 <input
                                     type="text"
                                     class="form-control"
-                                    :disabled="selectedButtonActionType === 'none'"
+                                    :disabled="selectedButtonActionType === 'none' || ['step-prev', 'step-next'].includes(selectedButtonActionType)"
                                     :placeholder="getButtonActionPlaceholder(selectedButtonActionType)"
                                     :value="selectedElement.props.actionValue || ''"
                                     @input="updateElementProp('actionValue', $event.target.value)"
                                 >
-                                <div class="form-text">提示消息会在 H5 中弹窗，在微信小程序代码中生成提示；跳转链接会生成对应跳转逻辑。</div>
+                                <div class="form-text">提示消息会在 H5 中弹窗，在微信小程序代码中生成提示；跳转链接会生成对应跳转逻辑；分步表单可用“上一步 / 下一步”切换步骤。</div>
                             </div>
                             <div v-if="selectedButtonActionType === 'submit'" class="mt-3">
                                 <label class="form-label">提交结果</label>
@@ -976,6 +977,51 @@
                                     <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyValidationPreset('email')">邮箱</button>
                                     <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyValidationPreset('number')">数字</button>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div class="property-shortcuts">
+                            <label class="form-label">步骤归属</label>
+                            <div class="shortcut-grid">
+                                <button
+                                    v-for="step in currentPageStepCatalog"
+                                    :key="step.index"
+                                    type="button"
+                                    :class="['btn btn-sm', selectedElementStepIndex === step.index ? 'btn-success' : 'btn-outline-secondary']"
+                                    @click="updateElementProp('stepIndex', String(step.index))"
+                                >
+                                    {{ step.title ? `第${step.index}步` : `步骤 ${step.index}` }}
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-outline-secondary btn-sm"
+                                    @click="updateElementProp('stepIndex', String((((currentPageStepCatalog[currentPageStepCatalog.length - 1] && currentPageStepCatalog[currentPageStepCatalog.length - 1].index) || 1) + 1)))"
+                                >
+                                    新步骤
+                                </button>
+                            </div>
+                            <div class="mt-3">
+                                <label class="form-label">所属步骤</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    class="form-control"
+                                    :value="selectedElement.props.stepIndex || '1'"
+                                    @input="updateElementProp('stepIndex', $event.target.value)"
+                                >
+                            </div>
+                            <div class="mt-3">
+                                <label class="form-label">步骤标题</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    :value="selectedElement.props.stepTitle || ''"
+                                    placeholder="例如：基本信息 / 联系方式"
+                                    @input="updateElementProp('stepTitle', $event.target.value)"
+                                >
+                            </div>
+                            <div class="form-text mt-2">
+                                当前归属：{{ selectedElementStepLabel }}。多步骤表单建议把“提交”按钮放在最后一步，把“下一步 / 上一步”按钮分别放到中间步骤。
                             </div>
                         </div>
 

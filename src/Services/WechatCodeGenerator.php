@@ -187,6 +187,75 @@ page {
 .picker-display {
   display: flex;
   align-items: center;
+}
+
+.builder-step-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+  margin-bottom: 28rpx;
+  padding: 24rpx;
+  border-radius: {$radius};
+  border: 2rpx solid rgba(159, 195, 175, 0.45);
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbf8 100%);
+}
+
+.builder-step-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: {$text};
+  font-size: 26rpx;
+}
+
+.builder-step-track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.builder-step-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid rgba(215, 226, 214, 0.85);
+  background: rgba(248, 251, 247, 0.95);
+  color: #60756f;
+}
+
+.builder-step-item.is-active {
+  border-color: rgba(15, 118, 110, 0.28);
+  background: rgba(215, 243, 236, 0.78);
+  color: {$primary};
+}
+
+.builder-step-item.is-complete {
+  color: {$text};
+}
+
+.builder-step-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 999rpx;
+  background: rgba(215, 226, 214, 0.9);
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.builder-step-item.is-active .builder-step-indicator,
+.builder-step-item.is-complete .builder-step-indicator {
+  background: {$primary};
+  color: #ffffff;
+}
+
+.builder-step-text {
+  font-size: 24rpx;
+  line-height: 1.4;
 }";
     }
     
@@ -198,6 +267,7 @@ page {
         }
 
         $formSchema = $this->extractFormSchema($page['elements'] ?? []);
+        $stepDefinitions = $this->extractStepDefinitions($page['elements'] ?? []);
         $visibilityRules = $this->extractVisibilityRules($page['elements'] ?? []);
         $formValues = [];
         $formSchemaMap = [];
@@ -221,6 +291,9 @@ page {
         $data['formSchemaMap'] = $formSchemaMap;
         $data['formDisplayValues'] = $formDisplayValues;
         $data['formCheckedMap'] = $formCheckedMap;
+        $data['formStepDefinitions'] = $stepDefinitions;
+        $data['currentStep'] = $stepDefinitions[0]['index'] ?? 1;
+        $data['totalSteps'] = count($stepDefinitions);
         $data['visibilityRules'] = $visibilityRules;
         $data['visibilityState'] = $this->buildInitialVisibilityState($visibilityRules, $formValues);
         $data['builderProjectTitle'] = $config['title'] ?? '未命名项目';
@@ -297,6 +370,39 @@ page {
 
     const visibilityState = this.data.visibilityState || {};
     return visibilityState[field.visibilityKey] !== false;
+  },
+
+  getCurrentStepSchema() {
+    const schema = Array.isArray(this.data.formSchema) ? this.data.formSchema : [];
+    const currentStep = Number(this.data.currentStep || 1);
+    return schema.filter((field) => Number(field.stepIndex || 1) === currentStep && this.isFieldVisible(field));
+  },
+
+  getSubmittableSchema() {
+    const schema = Array.isArray(this.data.formSchema) ? this.data.formSchema : [];
+    return schema.filter((field) => this.isFieldVisible(field));
+  },
+
+  validateSchemaFields(fields = []) {
+    const values = this.data.formValues || {};
+    return fields.find((field) => {
+      const rawValue = values[field.key];
+      const value = Array.isArray(rawValue) ? rawValue.map((item) => String(item || '').trim()).filter(Boolean) : String(rawValue || '').trim();
+
+      if (field.required && ((Array.isArray(value) && value.length === 0) || (!Array.isArray(value) && !value))) {
+        return true;
+      }
+
+      if (Array.isArray(value) || !value || !field.pattern) {
+        return false;
+      }
+
+      try {
+        return !(new RegExp(field.pattern)).test(value);
+      } catch (error) {
+        return false;
+      }
+    }) || null;
   },
 
   handleFieldInput(event) {
@@ -395,36 +501,57 @@ page {
       return;
     }
 
+    if (actionType === 'step-prev' || actionType === 'step-next') {
+      const currentStep = Number(this.data.currentStep || 1);
+      const totalSteps = Number(this.data.totalSteps || 1);
+
+      if (actionType === 'step-prev') {
+        this.setData({
+          currentStep: Math.max(1, currentStep - 1)
+        });
+        return;
+      }
+
+      const invalidField = this.validateSchemaFields(this.getCurrentStepSchema());
+
+      if (invalidField) {
+        const rawValue = (this.data.formValues || {})[invalidField.key];
+        const isEmpty = Array.isArray(rawValue)
+          ? rawValue.length === 0
+          : !String(rawValue || '').trim();
+        wx.showToast({
+          title: invalidField.required && isEmpty
+            ? ((invalidField.label || '当前字段') + '为必填项')
+            : (invalidField.message || ((invalidField.label || '当前字段') + '格式不正确')),
+          icon: 'none'
+        });
+        return;
+      }
+
+      this.setData({
+        currentStep: Math.min(totalSteps, currentStep + 1)
+      });
+      return;
+    }
+
     if (actionType === 'submit') {
       const schema = Array.isArray(this.data.formSchema) ? this.data.formSchema : [];
-      const visibleSchema = schema.filter((field) => this.isFieldVisible(field));
+      const currentStepSchema = this.getCurrentStepSchema();
+      const visibleSchema = this.getSubmittableSchema();
       const values = this.data.formValues || {};
       const submittedValues = visibleSchema.reduce((result, field) => {
         result[field.key] = values[field.key];
         return result;
       }, {});
-      const invalidField = visibleSchema.find((field) => {
-        const rawValue = values[field.key];
-        const value = Array.isArray(rawValue) ? rawValue.map((item) => String(item || '').trim()).filter(Boolean) : String(rawValue || '').trim();
-
-        if (field.required && ((Array.isArray(value) && value.length === 0) || (!Array.isArray(value) && !value))) {
-          return true;
-        }
-
-        if (Array.isArray(value) || !value || !field.pattern) {
-          return false;
-        }
-
-        try {
-          return !(new RegExp(field.pattern)).test(value);
-        } catch (error) {
-          return false;
-        }
-      });
+      const invalidField = this.validateSchemaFields(currentStepSchema);
 
       if (invalidField) {
+        const rawValue = values[invalidField.key];
+        const isEmpty = Array.isArray(rawValue)
+          ? rawValue.length === 0
+          : !String(rawValue || '').trim();
         wx.showToast({
-          title: invalidField.required && !String(values[invalidField.key] || '').trim()
+          title: invalidField.required && isEmpty
             ? ((invalidField.label || '当前字段') + '为必填项')
             : (invalidField.message || ((invalidField.label || '当前字段') + '格式不正确')),
           icon: 'none'
@@ -454,6 +581,7 @@ page {
               resetData['formDisplayValues.' + field.key] = field.placeholder || '请选择';
             }
           });
+          resetData.currentStep = 1;
           this.setData(resetData, () => {
             this.refreshVisibilityState();
           });
@@ -561,7 +689,7 @@ page {
     private function generatePageWxml($page)
     {
         $elements = $page['elements'] ?? [];
-        $wxml = '';
+        $wxml = $this->buildStepProgressWxml($page);
         
         foreach ($elements as $element) {
             $wxml .= $this->generateElementWxml($element);
@@ -718,7 +846,7 @@ page {
                 break;
         }
 
-        return $this->wrapVisibilityWxml($wxml, $element, $props);
+        return $this->wrapStepWxml($this->wrapVisibilityWxml($wxml, $element, $props), $props);
     }
     
     private function generateElementWxss($element)
@@ -763,6 +891,7 @@ page {
                         ? $this->parseChoiceOptions($props['options'] ?? '')
                         : [],
                     'visibilityKey' => $this->resolveVisibilityKey($element),
+                    'stepIndex' => $this->resolveStepIndex($props),
                 ];
             }
 
@@ -901,6 +1030,45 @@ page {
         return $rules;
     }
 
+    private function extractStepDefinitions(array $elements): array
+    {
+        $definitions = [];
+
+        foreach ($elements as $element) {
+            $props = $element['props'] ?? [];
+            $stepIndex = $this->resolveStepIndex($props);
+
+            if (!isset($definitions[$stepIndex])) {
+                $definitions[$stepIndex] = [
+                    'index' => $stepIndex,
+                    'title' => '',
+                    'label' => "第{$stepIndex}步",
+                ];
+            }
+
+            if ($definitions[$stepIndex]['title'] === '' && !empty($props['stepTitle'])) {
+                $definitions[$stepIndex]['title'] = trim((string) $props['stepTitle']);
+                $definitions[$stepIndex]['label'] = $definitions[$stepIndex]['title'] !== ''
+                    ? "第{$stepIndex}步·{$definitions[$stepIndex]['title']}"
+                    : "第{$stepIndex}步";
+            }
+
+            if (!empty($element['children']) && is_array($element['children'])) {
+                foreach ($this->extractStepDefinitions($element['children']) as $childDefinition) {
+                    $childIndex = (int) ($childDefinition['index'] ?? 1);
+                    if (!isset($definitions[$childIndex])) {
+                        $definitions[$childIndex] = $childDefinition;
+                    } elseif ($definitions[$childIndex]['title'] === '' && !empty($childDefinition['title'])) {
+                        $definitions[$childIndex] = $childDefinition;
+                    }
+                }
+            }
+        }
+
+        ksort($definitions);
+        return array_values($definitions);
+    }
+
     private function buildInitialVisibilityState(array $rules, array $formValues): array
     {
         $state = [];
@@ -961,6 +1129,12 @@ page {
         return 'visible_' . preg_replace('/[^\w]+/', '_', $base);
     }
 
+    private function resolveStepIndex(array $props): int
+    {
+        $stepIndex = (int) ($props['stepIndex'] ?? 1);
+        return $stepIndex > 0 ? $stepIndex : 1;
+    }
+
     private function wrapVisibilityWxml(string $wxml, array $element, array $props): string
     {
         if (empty($props['conditionEnabled']) || empty($props['conditionFieldKey'])) {
@@ -969,6 +1143,12 @@ page {
 
         $visibilityKey = $this->resolveVisibilityKey($element);
         return "<block wx:if=\"{{visibilityState['{$visibilityKey}'] !== false}}\">\n{$wxml}</block>\n";
+    }
+
+    private function wrapStepWxml(string $wxml, array $props): string
+    {
+        $stepIndex = $this->resolveStepIndex($props);
+        return "<block wx:if=\"{{currentStep === {$stepIndex}}}\">\n{$wxml}</block>\n";
     }
 
     private function resolveTheme(array $theme): array
@@ -981,6 +1161,17 @@ page {
             'text' => $theme['text'] ?? '#16302b',
             'radius' => $theme['radius'] ?? '18px',
         ];
+    }
+
+    private function buildStepProgressWxml(array $page): string
+    {
+        $steps = $this->extractStepDefinitions($page['elements'] ?? []);
+
+        if (count($steps) <= 1 && (($steps[0]['index'] ?? 1) === 1)) {
+            return '';
+        }
+
+        return "<view class=\"builder-step-progress\"><view class=\"builder-step-head\"><text>分步表单</text><text>{{currentStep}} / {{totalSteps}}</text></view><view class=\"builder-step-track\"><view wx:for=\"{{formStepDefinitions}}\" wx:key=\"index\" class=\"builder-step-item {{currentStep === item.index ? 'is-active' : (currentStep > item.index ? 'is-complete' : '')}}\"><text class=\"builder-step-indicator\">{{item.index}}</text><text class=\"builder-step-text\">{{item.label}}</text></view></view></view>\n";
     }
     
     private function generateComponentJs($component)
