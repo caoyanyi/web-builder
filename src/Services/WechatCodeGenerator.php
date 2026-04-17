@@ -326,11 +326,19 @@ page {
 }
 
 .builder-field-meta {
+  margin-top: 10rpx;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 18rpx;
+}
+
+.builder-field-assist {
   margin-top: 10rpx;
+}
+
+.builder-field-assist .builder-field-meta {
+  margin-top: 0;
 }
 
 .builder-field-help,
@@ -342,6 +350,25 @@ page {
 
 .builder-field-help {
   flex: 1;
+}
+
+.builder-field-error {
+  margin-top: 8rpx;
+  color: #be185d;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.builder-field-invalid {
+  border-color: rgba(190, 24, 93, 0.72) !important;
+  box-shadow: 0 0 0 6rpx rgba(190, 24, 93, 0.14);
+}
+
+.choice-group.builder-field-invalid {
+  padding: 18rpx;
+  border: 2rpx solid rgba(190, 24, 93, 0.42);
+  border-radius: 20rpx;
+  background: rgba(255, 241, 242, 0.72);
 }";
     }
     
@@ -359,9 +386,11 @@ page {
         $formSchemaMap = [];
         $formDisplayValues = [];
         $formCheckedMap = [];
+        $formErrors = [];
         foreach ($formSchema as $field) {
             $formValues[$field['key']] = $field['value'] ?? '';
             $formSchemaMap[$field['key']] = $field;
+            $formErrors[$field['key']] = '';
 
             if (($field['type'] ?? '') === 'select') {
                 $formDisplayValues[$field['key']] = $this->resolveSelectDisplayValue($field);
@@ -377,6 +406,7 @@ page {
         $data['formSchemaMap'] = $formSchemaMap;
         $data['formDisplayValues'] = $formDisplayValues;
         $data['formCheckedMap'] = $formCheckedMap;
+        $data['formErrors'] = $formErrors;
         $data['formStepDefinitions'] = $stepDefinitions;
         $data['currentStep'] = $stepDefinitions[0]['index'] ?? 1;
         $data['totalSteps'] = count($stepDefinitions);
@@ -449,7 +479,9 @@ page {
     this.setData({
       visibilityState: nextVisibilityState
     }, () => {
-      this.refreshSummaryState(callback);
+      this.refreshValidationState(() => {
+        this.refreshSummaryState(callback);
+      });
     });
   },
 
@@ -471,6 +503,66 @@ page {
   getSubmittableSchema() {
     const schema = Array.isArray(this.data.formSchema) ? this.data.formSchema : [];
     return schema.filter((field) => this.isFieldVisible(field));
+  },
+
+  setFieldError(fieldKey = '', message = '', callback) {
+    if (!fieldKey) {
+      if (typeof callback === 'function') {
+        callback();
+      }
+      return;
+    }
+
+    const nextData = {};
+    nextData['formErrors.' + fieldKey] = String(message || '').trim();
+    this.setData(nextData, callback);
+  },
+
+  syncFieldValidation(fieldKey = '', callback) {
+    const schemaMap = this.data.formSchemaMap || {};
+    const field = schemaMap[fieldKey];
+
+    if (!fieldKey || !field) {
+      if (typeof callback === 'function') {
+        callback();
+      }
+      return '';
+    }
+
+    if (!this.isFieldVisible(field) || Number(field.stepIndex || 1) !== Number(this.data.currentStep || 1)) {
+      this.setFieldError(fieldKey, '', callback);
+      return '';
+    }
+
+    const message = this.validateSchemaField(field);
+    this.setFieldError(fieldKey, message, callback);
+    return message;
+  },
+
+  refreshValidationState(callback) {
+    const schema = Array.isArray(this.data.formSchema) ? this.data.formSchema : [];
+    const currentErrors = this.data.formErrors || {};
+    const currentStep = Number(this.data.currentStep || 1);
+    const nextErrors = {};
+
+    schema.forEach((field) => {
+      const key = field.key || '';
+
+      if (!key) {
+        return;
+      }
+
+      if (!this.isFieldVisible(field) || Number(field.stepIndex || 1) !== currentStep) {
+        nextErrors[key] = '';
+        return;
+      }
+
+      nextErrors[key] = currentErrors[key] ? this.validateSchemaField(field) : '';
+    });
+
+    this.setData({
+      formErrors: nextErrors
+    }, callback);
   },
 
   validateSchemaField(field) {
@@ -575,15 +667,31 @@ page {
   },
 
   validateSchemaFields(fields = []) {
-    const invalidField = fields.find((field) => this.validateSchemaField(field));
+    const currentErrors = this.data.formErrors || {};
+    const nextErrors = Object.assign({}, currentErrors);
+    let invalidField = null;
+
+    fields.forEach((field) => {
+      const message = this.validateSchemaField(field);
+      nextErrors[field.key] = message;
+
+      if (!invalidField && message) {
+        invalidField = {
+          field,
+          message
+        };
+      }
+    });
+
+    this.setData({
+      formErrors: nextErrors
+    });
+
     if (!invalidField) {
       return null;
     }
 
-    return {
-      field: invalidField,
-      message: this.validateSchemaField(invalidField)
-    };
+    return invalidField;
   },
 
   handleFieldInput(event) {
@@ -597,7 +705,9 @@ page {
     const nextValue = fieldType === 'number' ? String(event.detail.value || '').replace(/[^\d.]/g, '') : event.detail.value;
     nextData['formValues.' + fieldKey] = nextValue;
     this.setData(nextData, () => {
-      this.refreshVisibilityState();
+      this.refreshVisibilityState(() => {
+        this.syncFieldValidation(fieldKey);
+      });
     });
   },
 
@@ -622,7 +732,9 @@ page {
     nextData['formValues.' + fieldKey] = selectedOption.value;
     nextData['formDisplayValues.' + fieldKey] = selectedOption.label || selectedOption.value || (fieldSchema.placeholder || '请选择');
     this.setData(nextData, () => {
-      this.refreshVisibilityState();
+      this.refreshVisibilityState(() => {
+        this.syncFieldValidation(fieldKey);
+      });
     });
   },
 
@@ -648,7 +760,9 @@ page {
       nextData['formValues.' + fieldKey] = selectedValues;
       nextData['formCheckedMap.' + fieldKey] = checkedMap;
       this.setData(nextData, () => {
-        this.refreshVisibilityState();
+        this.refreshVisibilityState(() => {
+          this.syncFieldValidation(fieldKey);
+        });
       });
       return;
     }
@@ -656,7 +770,9 @@ page {
     const nextData = {};
     nextData['formValues.' + fieldKey] = event.detail.value || '';
     this.setData(nextData, () => {
-      this.refreshVisibilityState();
+      this.refreshVisibilityState(() => {
+        this.syncFieldValidation(fieldKey);
+      });
     });
   },
 
@@ -689,6 +805,8 @@ page {
       if (actionType === 'step-prev') {
         this.setData({
           currentStep: Math.max(1, currentStep - 1)
+        }, () => {
+          this.refreshValidationState();
         });
         return;
       }
@@ -705,6 +823,8 @@ page {
 
       this.setData({
         currentStep: Math.min(totalSteps, currentStep + 1)
+      }, () => {
+        this.refreshValidationState();
       });
       return;
     }
@@ -734,6 +854,8 @@ page {
         if (submitReset === '1') {
           const resetData = {};
           schema.forEach((field) => {
+            resetData['formErrors.' + field.key] = '';
+
             if (field.type === 'checkbox-group') {
               resetData['formValues.' + field.key] = [];
               const checkedMap = {};
@@ -946,10 +1068,10 @@ page {
                 $label = $props['label'] ?? '';
                 $required = !empty($props['required']) ? '<text style="color:#c2410c;">*</text>' : '';
                 $placeholder = $props['placeholder'] ?? '';
-                $class = $props['class'] ?? '';
                 $width = $props['width'] ?? '';
                 $style = $props['style'] ?? '';
                 $fieldKey = $this->resolveFieldKey($element);
+                $class = trim(($props['class'] ?? '') . " {{formErrors.{$fieldKey} ? 'builder-field-invalid' : ''}}");
                 $fieldType = htmlspecialchars($this->resolveWechatInputType($props['inputType'] ?? 'text'), ENT_QUOTES, 'UTF-8');
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
@@ -963,10 +1085,10 @@ page {
                 $label = $props['label'] ?? '';
                 $required = !empty($props['required']) ? '<text style="color:#c2410c;">*</text>' : '';
                 $placeholder = $props['placeholder'] ?? '';
-                $class = $props['class'] ?? '';
                 $width = $props['width'] ?? '';
                 $style = $props['style'] ?? '';
                 $fieldKey = $this->resolveFieldKey($element);
+                $class = trim(($props['class'] ?? '') . " {{formErrors.{$fieldKey} ? 'builder-field-invalid' : ''}}");
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
                 $maxLength = (string) ($props['maxLength'] ?? '');
@@ -978,10 +1100,10 @@ page {
             case 'select':
                 $label = $props['label'] ?? '';
                 $required = !empty($props['required']) ? '<text style="color:#c2410c;">*</text>' : '';
-                $class = trim('form-control picker-display ' . ($props['class'] ?? ''));
                 $width = $props['width'] ?? '';
                 $style = $props['style'] ?? '';
                 $fieldKey = $this->resolveFieldKey($element);
+                $class = trim('form-control picker-display ' . ($props['class'] ?? '') . " {{formErrors.{$fieldKey} ? 'builder-field-invalid' : ''}}");
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
                 $assistWxml = $this->buildWechatFieldAssistWxml($props, $fieldKey, 'select');
@@ -991,10 +1113,10 @@ page {
             case 'radio-group':
                 $label = $props['label'] ?? '';
                 $required = !empty($props['required']) ? '<text style="color:#c2410c;">*</text>' : '';
-                $class = trim('choice-group ' . ((($props['optionLayout'] ?? 'vertical') === 'horizontal') ? 'choice-group-horizontal ' : '') . ($props['class'] ?? ''));
                 $width = $props['width'] ?? '';
                 $style = $props['style'] ?? '';
                 $fieldKey = $this->resolveFieldKey($element);
+                $class = trim('choice-group ' . ((($props['optionLayout'] ?? 'vertical') === 'horizontal') ? 'choice-group-horizontal ' : '') . ($props['class'] ?? '') . " {{formErrors.{$fieldKey} ? 'builder-field-invalid' : ''}}");
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
                 $optionsWxml = $this->buildWechatChoiceGroupWxml('radio', $fieldKey);
@@ -1005,10 +1127,10 @@ page {
             case 'checkbox-group':
                 $label = $props['label'] ?? '';
                 $required = !empty($props['required']) ? '<text style="color:#c2410c;">*</text>' : '';
-                $class = trim('choice-group ' . ((($props['optionLayout'] ?? 'vertical') === 'horizontal') ? 'choice-group-horizontal ' : '') . ($props['class'] ?? ''));
                 $width = $props['width'] ?? '';
                 $style = $props['style'] ?? '';
                 $fieldKey = $this->resolveFieldKey($element);
+                $class = trim('choice-group ' . ((($props['optionLayout'] ?? 'vertical') === 'horizontal') ? 'choice-group-horizontal ' : '') . ($props['class'] ?? '') . " {{formErrors.{$fieldKey} ? 'builder-field-invalid' : ''}}");
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
                 $optionsWxml = $this->buildWechatChoiceGroupWxml('checkbox', $fieldKey);
@@ -1136,16 +1258,16 @@ page {
         $maxLength = (int) ($props['maxLength'] ?? 0);
         $showCounter = in_array($fieldType, ['input', 'textarea'], true) && $maxLength > 0;
 
-        if ($helperText === '' && !$showCounter) {
-            return '';
-        }
-
         $helperHtml = $helperText !== '' ? "<text class=\"builder-field-help\">{$helperText}</text>" : '';
         $counterHtml = $showCounter
             ? "<text class=\"builder-field-count\">{{formValues.{$fieldKey} ? formValues.{$fieldKey}.length : 0}}/{$maxLength}</text>"
             : '';
+        $metaHtml = ($helperHtml !== '' || $counterHtml !== '')
+            ? "<view class=\"builder-field-meta\">{$helperHtml}{$counterHtml}</view>"
+            : '';
+        $errorHtml = "<text wx:if=\"{{formErrors.{$fieldKey}}}\" class=\"builder-field-error\">{{formErrors.{$fieldKey}}}</text>";
 
-        return "<view class=\"builder-field-meta\">{$helperHtml}{$counterHtml}</view>";
+        return "<view class=\"builder-field-assist\">{$metaHtml}{$errorHtml}</view>";
     }
 
     private function buildWechatSummaryWxml(array $props): string

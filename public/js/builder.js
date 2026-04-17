@@ -3843,6 +3843,7 @@ createApp({
                 this.refreshPreviewFieldAssistState(scope);
                 this.refreshPreviewStepState(scope);
                 this.refreshPreviewSummaryState(scope);
+                this.refreshPreviewValidationState(scope, event.target);
             };
             stage.addEventListener('input', this.previewStageInteractionHandler);
             stage.addEventListener('change', this.previewStageInteractionHandler);
@@ -3865,6 +3866,16 @@ createApp({
         },
         getPreviewFieldCounters(scope) {
             return Array.from((scope || this.$refs.previewStage || document).querySelectorAll('[data-field-counter]'));
+        },
+        getPreviewFieldErrorNode(field) {
+            const fieldKey = field && field.dataset ? field.dataset.fieldKey || '' : '';
+
+            if (!fieldKey) {
+                return null;
+            }
+
+            const pageNode = this.getPreviewPageNode(field);
+            return (pageNode || this.$refs.previewStage || document).querySelector(`[data-field-error="${fieldKey}"]`);
         },
         getPreviewSummaryBlocks(scope) {
             return Array.from((scope || this.$refs.previewStage || document).querySelectorAll('[data-summary-enabled="1"]'));
@@ -4160,17 +4171,87 @@ createApp({
 
             pages.forEach((page) => this.refreshPreviewConditionalVisibility(page));
         },
-        validatePreviewFields(fields = []) {
-            const invalidField = (fields || []).find((field) => this.validatePreviewField(field));
+        setPreviewFieldError(field, message = '') {
+            if (!field) {
+                return;
+            }
 
-            if (!invalidField) {
+            const errorNode = this.getPreviewFieldErrorNode(field);
+            const nextMessage = String(message || '').trim();
+
+            field.classList.toggle('builder-field-invalid', Boolean(nextMessage));
+            field.setAttribute('aria-invalid', nextMessage ? 'true' : 'false');
+
+            if (errorNode) {
+                errorNode.textContent = nextMessage;
+                errorNode.hidden = !nextMessage;
+            }
+        },
+        clearPreviewFieldError(field) {
+            this.setPreviewFieldError(field, '');
+        },
+        clearPreviewFieldErrors(scope) {
+            this.getPreviewFields(scope).forEach((field) => {
+                this.clearPreviewFieldError(field);
+            });
+        },
+        syncPreviewFieldValidation(field) {
+            if (!field) {
                 return '';
             }
 
-            const message = this.validatePreviewField(invalidField);
-            window.alert(message || '表单校验失败');
-            this.focusPreviewField(invalidField);
+            if (!this.isPreviewFieldConditionVisible(field) || !this.isPreviewFieldStepVisible(field)) {
+                this.clearPreviewFieldError(field);
+                return '';
+            }
+
+            const message = this.validatePreviewField(field);
+            this.setPreviewFieldError(field, message);
             return message;
+        },
+        refreshPreviewValidationState(scope, target = null) {
+            const currentTarget = target && typeof target.closest === 'function'
+                ? target.closest('[data-builder-field="true"]')
+                : null;
+
+            if (currentTarget) {
+                this.syncPreviewFieldValidation(currentTarget);
+            }
+
+            this.getPreviewFields(scope).forEach((field) => {
+                if (field === currentTarget) {
+                    return;
+                }
+
+                if (!this.isPreviewFieldConditionVisible(field) || !this.isPreviewFieldStepVisible(field)) {
+                    this.clearPreviewFieldError(field);
+                    return;
+                }
+
+                if (field.getAttribute('aria-invalid') === 'true') {
+                    this.syncPreviewFieldValidation(field);
+                }
+            });
+        },
+        validatePreviewFields(fields = []) {
+            let firstInvalidField = null;
+            let firstMessage = '';
+
+            (fields || []).forEach((field) => {
+                const message = this.syncPreviewFieldValidation(field);
+
+                if (!firstInvalidField && message) {
+                    firstInvalidField = field;
+                    firstMessage = message;
+                }
+            });
+
+            if (!firstInvalidField) {
+                return '';
+            }
+
+            this.focusPreviewField(firstInvalidField);
+            return firstMessage || '表单校验失败';
         },
         isPreviewFieldEmpty(value) {
             return Array.isArray(value) ? value.length === 0 : !String(value || '').trim();
@@ -4289,6 +4370,31 @@ createApp({
                 field_meta: fieldMeta
             };
         },
+        showToast(message = '', tone = 'info') {
+            const text = String(message || '').trim();
+
+            if (!text || typeof document === 'undefined') {
+                return;
+            }
+
+            const toast = document.createElement('div');
+            toast.className = `builder-inline-toast is-${tone || 'info'}`;
+            toast.textContent = text;
+            document.body.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.classList.add('is-visible');
+            });
+
+            window.setTimeout(() => {
+                toast.classList.remove('is-visible');
+                window.setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 180);
+            }, 2200);
+        },
         async submitBuilderPreviewForm(formData, pageContext, config = {}) {
             const endpoint = config.submitEndpoint || '/api/form-submissions';
             const method = config.submitMethod || 'POST';
@@ -4305,6 +4411,7 @@ createApp({
             const totalSteps = Number((this.getPreviewPageNode(scope).dataset || {}).totalSteps || this.currentPageStepCatalog.length || 1);
 
             if (direction === 'prev') {
+                this.clearPreviewFieldErrors(scope);
                 this.refreshPreviewFieldAssistState(scope);
                 this.refreshPreviewStepState(scope, Math.max(1, currentStep - 1));
                 this.refreshPreviewSummaryState(scope);
@@ -4318,6 +4425,7 @@ createApp({
             this.refreshPreviewFieldAssistState(scope);
             this.refreshPreviewStepState(scope, Math.min(totalSteps, currentStep + 1));
             this.refreshPreviewSummaryState(scope);
+            this.refreshPreviewValidationState(scope);
             return false;
         },
         async handleBuilderSubmitAction(trigger, config = {}) {
@@ -4342,7 +4450,7 @@ createApp({
                     await this.fetchSubmissions(true);
                 }
             } catch (error) {
-                window.alert(error.message || '提交失败，请检查接口配置');
+                this.showToast(error.message || '提交失败，请检查接口配置', 'danger');
                 return false;
             }
 
@@ -4350,13 +4458,14 @@ createApp({
                 this.getPreviewFields(scope).forEach((field) => {
                     this.resetPreviewField(field);
                 });
+                this.clearPreviewFieldErrors(scope);
                 this.refreshPreviewConditionalVisibility(scope);
                 this.refreshPreviewFieldAssistState(scope);
                 this.refreshPreviewStepState(scope, 1);
                 this.refreshPreviewSummaryState(scope);
             }
 
-            window.alert(config.successMessage || '提交成功');
+            this.showToast(config.successMessage || '提交成功', 'success');
 
             if (config.redirectUrl) {
                 window.location.href = config.redirectUrl;

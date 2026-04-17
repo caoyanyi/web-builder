@@ -398,12 +398,15 @@ body {
     font-size: 0.84rem;
 }
 
+.builder-field-assist {
+    margin-top: 0.4rem;
+}
+
 .builder-field-meta {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
     gap: 0.75rem;
-    margin-top: 0.4rem;
 }
 
 .builder-field-help,
@@ -419,6 +422,58 @@ body {
 
 .builder-field-count {
     white-space: nowrap;
+}
+
+.builder-field-error {
+    margin-top: 0.35rem;
+    color: #be185d;
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.builder-field-error[hidden] {
+    display: none !important;
+}
+
+.builder-field-invalid {
+    border-color: rgba(190, 24, 93, 0.72) !important;
+    box-shadow: 0 0 0 0.22rem rgba(190, 24, 93, 0.14);
+}
+
+.choice-group.builder-field-invalid {
+    padding: 0.75rem;
+    border: 1px solid rgba(190, 24, 93, 0.42);
+    border-radius: 18px;
+    background: rgba(255, 241, 242, 0.72);
+}
+
+.builder-inline-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1080;
+    max-width: min(420px, calc(100vw - 32px));
+    padding: 14px 16px;
+    border-radius: 18px;
+    background: rgba(15, 23, 42, 0.92);
+    color: #f8fafc;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.24);
+    opacity: 0;
+    transform: translate3d(0, -8px, 0);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.builder-inline-toast.is-visible {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+}
+
+.builder-inline-toast.is-success {
+    background: rgba(22, 101, 52, 0.94);
+}
+
+.builder-inline-toast.is-danger {
+    background: rgba(157, 23, 77, 0.95);
 }
 
 /* 响应式设计 */
@@ -472,6 +527,7 @@ class App {
                 this.refreshConditionalVisibility(scope);
                 this.refreshFieldAssistState(scope);
                 this.refreshSummaryState(scope);
+                this.refreshValidationState(scope, event.target);
             }
         });
 
@@ -481,6 +537,7 @@ class App {
                 this.refreshConditionalVisibility(scope);
                 this.refreshFieldAssistState(scope);
                 this.refreshSummaryState(scope);
+                this.refreshValidationState(scope, event.target);
             }
         });
     }
@@ -599,14 +656,9 @@ class App {
         const assistKey = this.escapeHtmlAttribute(fieldKey || 'field');
         const maxLength = Number.parseInt(String(props.maxLength || ''), 10);
         const showCounter = Number.isFinite(maxLength) && maxLength > 0 && ['input', 'textarea'].includes(fieldType);
-
-        if (!helperText && !showCounter) {
-            return '';
-        }
-
         const counterText = showCounter ? `${String(currentValue || '').length}/${maxLength}` : '';
 
-        return `<div class="builder-field-meta">${helperText ? `<span class="builder-field-help" id="${assistKey}-help">${this.escapeHtmlAttribute(helperText)}</span>` : ''}${showCounter ? `<span class="builder-field-count" id="${assistKey}-count" data-field-counter="${assistKey}">${counterText}</span>` : ''}</div>`;
+        return `<div class="builder-field-assist">${helperText || showCounter ? `<div class="builder-field-meta">${helperText ? `<span class="builder-field-help" id="${assistKey}-help">${this.escapeHtmlAttribute(helperText)}</span>` : ''}${showCounter ? `<span class="builder-field-count" id="${assistKey}-count" data-field-counter="${assistKey}">${counterText}</span>` : ''}</div>` : ''}<div class="builder-field-error" id="${assistKey}-error" data-field-error="${assistKey}" hidden aria-live="polite"></div></div>`;
     }
 
     buildFieldAssistDescriptor(fieldKey = '', props = {}, fieldType = '') {
@@ -621,6 +673,8 @@ class App {
         if (Number.isFinite(maxLength) && maxLength > 0 && ['input', 'textarea'].includes(fieldType)) {
             ids.push(`${assistKey}-count`);
         }
+
+        ids.push(`${assistKey}-error`);
 
         return ids.join(' ');
     }
@@ -681,6 +735,17 @@ class App {
         return Array.from((scope || document).querySelectorAll('[data-field-counter]'));
     }
 
+    getFieldErrorNode(field) {
+        const fieldKey = field?.dataset?.fieldKey || '';
+
+        if (!fieldKey) {
+            return null;
+        }
+
+        const pageNode = this.getPageNode(field);
+        return (pageNode || document).querySelector(`[data-field-error="${fieldKey}"]`);
+    }
+
     isFieldConditionVisible(field) {
         return !(field && typeof field.closest === 'function' && field.closest('[data-conditional-hidden="1"]'));
     }
@@ -739,6 +804,73 @@ class App {
             }
 
             counter.textContent = `${String(this.getFieldValue(field) || '').length}/${maxLength}`;
+        });
+    }
+
+    setFieldError(field, message = '') {
+        if (!field) {
+            return;
+        }
+
+        const errorNode = this.getFieldErrorNode(field);
+        const nextMessage = String(message || '').trim();
+
+        field.classList.toggle('builder-field-invalid', Boolean(nextMessage));
+        field.setAttribute('aria-invalid', nextMessage ? 'true' : 'false');
+
+        if (errorNode) {
+            errorNode.textContent = nextMessage;
+            errorNode.hidden = !nextMessage;
+        }
+    }
+
+    clearFieldError(field) {
+        this.setFieldError(field, '');
+    }
+
+    clearFieldErrors(scope = document) {
+        this.getFormFields(scope).forEach((field) => {
+            this.clearFieldError(field);
+        });
+    }
+
+    syncFieldValidation(field) {
+        if (!field) {
+            return '';
+        }
+
+        if (!this.isFieldConditionVisible(field) || !this.isFieldStepVisible(field)) {
+            this.clearFieldError(field);
+            return '';
+        }
+
+        const message = this.validateField(field);
+        this.setFieldError(field, message);
+        return message;
+    }
+
+    refreshValidationState(scope = document, target = null) {
+        const currentTarget = target && typeof target.closest === 'function'
+            ? target.closest('[data-builder-field="true"]')
+            : null;
+
+        if (currentTarget) {
+            this.syncFieldValidation(currentTarget);
+        }
+
+        this.getFormFields(scope).forEach((field) => {
+            if (field === currentTarget) {
+                return;
+            }
+
+            if (!this.isFieldConditionVisible(field) || !this.isFieldStepVisible(field)) {
+                this.clearFieldError(field);
+                return;
+            }
+
+            if (field.getAttribute('aria-invalid') === 'true') {
+                this.syncFieldValidation(field);
+            }
         });
     }
 
@@ -894,16 +1026,24 @@ class App {
     }
 
     validateFields(fields = []) {
-        const invalidField = (fields || []).find((field) => this.validateField(field));
+        let firstInvalidField = null;
+        let firstMessage = '';
 
-        if (!invalidField) {
+        (fields || []).forEach((field) => {
+            const message = this.syncFieldValidation(field);
+
+            if (!firstInvalidField && message) {
+                firstInvalidField = field;
+                firstMessage = message;
+            }
+        });
+
+        if (!firstInvalidField) {
             return '';
         }
 
-        const message = this.validateField(invalidField);
-        alert(message || '表单校验失败');
-        this.focusField(invalidField);
-        return message;
+        this.focusField(firstInvalidField);
+        return firstMessage || '表单校验失败';
     }
 
     handleStepAction(trigger, direction = 'next') {
@@ -912,6 +1052,7 @@ class App {
         const totalSteps = Number(this.getPageNode(scope)?.dataset?.totalSteps || this.collectStepDefinitions(this.currentPage?.elements || []).length || 1);
 
         if (direction === 'prev') {
+            this.clearFieldErrors(scope);
             this.refreshStepState(scope, Math.max(1, currentStep - 1));
             this.refreshFieldAssistState(scope);
             this.refreshSummaryState(scope);
@@ -925,6 +1066,7 @@ class App {
         this.refreshStepState(scope, Math.min(totalSteps, currentStep + 1));
         this.refreshFieldAssistState(scope);
         this.refreshSummaryState(scope);
+        this.refreshValidationState(scope);
         return false;
     }
 
@@ -1052,6 +1194,32 @@ class App {
         return json;
     }
 
+    showToast(message = '', tone = 'info') {
+        const text = String(message || '').trim();
+
+        if (!text) {
+            return;
+        }
+
+        const toast = document.createElement('div');
+        toast.className = `builder-inline-toast is-${tone || 'info'}`;
+        toast.textContent = text;
+        document.body.appendChild(toast);
+
+        requestAnimationFrame(() => {
+            toast.classList.add('is-visible');
+        });
+
+        window.setTimeout(() => {
+            toast.classList.remove('is-visible');
+            window.setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 180);
+        }, 2200);
+    }
+
     buildFieldMeta(fields = []) {
         const fieldMeta = {};
 
@@ -1122,7 +1290,7 @@ class App {
                 fieldMeta
             });
         } catch (error) {
-            alert(error.message || '提交失败');
+            this.showToast(error.message || '提交失败');
             return false;
         }
 
@@ -1130,13 +1298,14 @@ class App {
             this.getFormFields(scope).forEach((field) => {
                 this.resetField(field);
             });
+            this.clearFieldErrors(scope);
             this.refreshConditionalVisibility(scope);
             this.refreshFieldAssistState(scope);
             this.refreshStepState(scope, 1);
             this.refreshSummaryState(scope);
         }
 
-        alert(config.successMessage || '提交成功');
+        this.showToast(config.successMessage || '提交成功', 'success');
 
         if (config.redirectUrl) {
             window.location.href = config.redirectUrl;
@@ -1630,10 +1799,6 @@ JS;
         $maxLength = (int) ($props['maxLength'] ?? 0);
         $showCounter = in_array($fieldType, ['input', 'textarea'], true) && $maxLength > 0;
 
-        if ($helperText === '' && !$showCounter) {
-            return '';
-        }
-
         $helperHtml = $helperText !== ''
             ? '<span class="builder-field-help" id="' . $fieldKey . '-help">' . htmlspecialchars($helperText, ENT_QUOTES, 'UTF-8') . '</span>'
             : '';
@@ -1642,7 +1807,12 @@ JS;
             ? '<span class="builder-field-count" id="' . $fieldKey . '-count" data-field-counter="' . $fieldKey . '">' . $currentLength . '/' . $maxLength . '</span>'
             : '';
 
-        return "    <div class=\"builder-field-meta\">{$helperHtml}{$counterHtml}</div>\n";
+        $metaHtml = ($helperHtml !== '' || $counterHtml !== '')
+            ? "        <div class=\"builder-field-meta\">{$helperHtml}{$counterHtml}</div>\n"
+            : '';
+        $errorHtml = '        <div class="builder-field-error" id="' . $fieldKey . '-error" data-field-error="' . $fieldKey . "\" hidden aria-live=\"polite\"></div>\n";
+
+        return "    <div class=\"builder-field-assist\">\n{$metaHtml}{$errorHtml}    </div>\n";
     }
 
     private function buildFieldAssistDescriptor(array $props, string $fieldKey, string $fieldType = ''): string
@@ -1657,6 +1827,8 @@ JS;
         if (in_array($fieldType, ['input', 'textarea'], true) && $maxLength > 0) {
             $ids[] = $fieldKey . '-count';
         }
+
+        $ids[] = $fieldKey . '-error';
 
         return htmlspecialchars(implode(' ', $ids), ENT_QUOTES, 'UTF-8');
     }
