@@ -1,12 +1,19 @@
 const { createApp } = Vue;
 
 const CONTAINER_TYPES = ['div', 'row'];
-const PROP_ORDER = ['content', 'text', 'label', 'required', 'placeholder', 'value', 'rows', 'fieldKey', 'inputType', 'options', 'optionLayout', 'validationPattern', 'validationMessage', 'height', 'src', 'alt', 'class', 'width', 'style', 'actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitResetForm', 'submitRedirectUrl'];
+const FORM_FIELD_TYPES = ['input', 'textarea', 'select', 'radio-group', 'checkbox-group'];
+const PROP_ORDER = ['content', 'text', 'label', 'required', 'placeholder', 'value', 'rows', 'fieldKey', 'conditionEnabled', 'conditionFieldKey', 'conditionOperator', 'conditionValue', 'inputType', 'options', 'optionLayout', 'validationPattern', 'validationMessage', 'height', 'src', 'alt', 'class', 'width', 'style', 'actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitResetForm', 'submitRedirectUrl'];
 const HISTORY_LIMIT = 60;
 const DRAG_KIND_COMPONENT = 'component';
 const DRAG_KIND_ELEMENT = 'existing-element';
 const LOCAL_DRAFT_STORAGE_KEY = 'web-builder-local-draft-v1';
 const INTERNAL_PROP_KEYS = new Set(['templateKey', 'templateName']);
+const DEFAULT_CONDITION_PROPS = {
+    conditionEnabled: false,
+    conditionFieldKey: '',
+    conditionOperator: 'equals',
+    conditionValue: ''
+};
 const BUTTON_ACTION_OPTIONS = [
     { value: 'none', label: '无动作' },
     { value: 'message', label: '提示消息' },
@@ -26,6 +33,14 @@ const REQUEST_METHOD_OPTIONS = [
 const OPTION_LAYOUT_OPTIONS = [
     { value: 'vertical', label: '纵向排列' },
     { value: 'horizontal', label: '横向排列' }
+];
+const CONDITION_OPERATOR_OPTIONS = [
+    { value: 'equals', label: '等于' },
+    { value: 'not_equals', label: '不等于' },
+    { value: 'contains', label: '包含' },
+    { value: 'not_contains', label: '不包含' },
+    { value: 'filled', label: '已填写' },
+    { value: 'empty', label: '为空' }
 ];
 const CHOICE_OPTION_PRESETS = [
     {
@@ -550,6 +565,96 @@ function parseChoiceValues(value) {
         .filter(Boolean);
 }
 
+function applyConditionalDefaults(props = {}) {
+    return {
+        ...DEFAULT_CONDITION_PROPS,
+        ...(props || {})
+    };
+}
+
+function normalizeConditionOperator(operator = 'equals') {
+    const nextOperator = String(operator || 'equals');
+    return CONDITION_OPERATOR_OPTIONS.some((item) => item.value === nextOperator)
+        ? nextOperator
+        : 'equals';
+}
+
+function normalizeConditionActualValue(value) {
+    if (Array.isArray(value)) {
+        return value
+            .map((item) => String(item || '').trim())
+            .filter(Boolean);
+    }
+
+    return String(value || '').trim();
+}
+
+function evaluateConditionRule(actualValue, operator = 'equals', expectedValue = '') {
+    const normalizedOperator = normalizeConditionOperator(operator);
+    const normalizedActual = normalizeConditionActualValue(actualValue);
+    const normalizedExpected = String(expectedValue || '').trim();
+
+    if (normalizedOperator === 'filled') {
+        return Array.isArray(normalizedActual) ? normalizedActual.length > 0 : normalizedActual !== '';
+    }
+
+    if (normalizedOperator === 'empty') {
+        return Array.isArray(normalizedActual) ? normalizedActual.length === 0 : normalizedActual === '';
+    }
+
+    if (Array.isArray(normalizedActual)) {
+        const included = normalizedActual.includes(normalizedExpected);
+        return normalizedOperator === 'not_contains' ? !included : included;
+    }
+
+    if (normalizedOperator === 'contains') {
+        return normalizedExpected !== '' && normalizedActual.includes(normalizedExpected);
+    }
+
+    if (normalizedOperator === 'not_contains') {
+        return normalizedExpected === '' ? true : !normalizedActual.includes(normalizedExpected);
+    }
+
+    if (normalizedOperator === 'not_equals') {
+        return normalizedActual !== normalizedExpected;
+    }
+
+    return normalizedActual === normalizedExpected;
+}
+
+function getConditionOperatorLabel(operator = 'equals') {
+    const matched = CONDITION_OPERATOR_OPTIONS.find((item) => item.value === normalizeConditionOperator(operator));
+    return matched ? matched.label : '等于';
+}
+
+function resolveElementFieldKey(element = null) {
+    if (!element || !FORM_FIELD_TYPES.includes(element.type)) {
+        return '';
+    }
+
+    const props = element.props || {};
+    const fallbackKey = `field_${String(element.id || element.type).replace(/[^\w-]+/g, '_')}`;
+
+    return props.fieldKey || fallbackKey;
+}
+
+function describeConditionRule(props = {}, fieldDefinitions = {}) {
+    if (!props || !props.conditionEnabled || !props.conditionFieldKey) {
+        return '';
+    }
+
+    const definition = fieldDefinitions[props.conditionFieldKey] || null;
+    const fieldLabel = definition && definition.label ? definition.label : props.conditionFieldKey;
+    const operatorLabel = getConditionOperatorLabel(props.conditionOperator || 'equals');
+    const normalizedOperator = normalizeConditionOperator(props.conditionOperator || 'equals');
+
+    if (normalizedOperator === 'filled' || normalizedOperator === 'empty') {
+        return `${fieldLabel}${operatorLabel}`;
+    }
+
+    return `${fieldLabel}${operatorLabel}${props.conditionValue || '未设置'}`;
+}
+
 function isContainerType(type) {
     return CONTAINER_TYPES.includes(type);
 }
@@ -581,6 +686,10 @@ const ComponentRenderer = {
         dropState: {
             type: Object,
             default: null
+        },
+        fieldDefinitions: {
+            type: Object,
+            default: () => ({})
         }
     },
     emits: ['select-element', 'remove-element', 'duplicate-element', 'move-element', 'insert-drop', 'container-drop', 'preview-drop-target'],
@@ -661,6 +770,9 @@ const ComponentRenderer = {
         },
         isHorizontalChoiceLayout() {
             return (this.element.props && this.element.props.optionLayout) === 'horizontal';
+        },
+        visibilitySummary() {
+            return describeConditionRule(this.element.props || {}, this.fieldDefinitions || {});
         }
     },
     methods: {
@@ -742,6 +854,7 @@ const ComponentRenderer = {
         >
             <div class="builder-node-toolbar">
                 <span class="builder-node-badge">{{ typeLabel }}</span>
+                <span v-if="visibilitySummary" class="status-pill">{{ visibilitySummary }}</span>
 
                 <div class="builder-node-actions">
                     <button type="button" class="builder-node-icon" title="上移" @click.stop="moveElement(-1)">
@@ -781,6 +894,7 @@ const ComponentRenderer = {
                     :element="child"
                     :selected-element-id="selectedElementId"
                     :drop-state="dropState && String(dropState.targetId) === String(child.id) ? dropState : null"
+                    :field-definitions="fieldDefinitions"
                     @select-element="$emit('select-element', $event)"
                     @remove-element="$emit('remove-element', $event)"
                     @duplicate-element="$emit('duplicate-element', $event)"
@@ -1015,6 +1129,7 @@ createApp({
             requestMethodOptions: REQUEST_METHOD_OPTIONS,
             optionLayoutOptions: OPTION_LAYOUT_OPTIONS,
             choiceOptionPresets: CHOICE_OPTION_PRESETS,
+            conditionOperatorOptions: CONDITION_OPERATOR_OPTIONS,
             themePresets: Object.entries(THEME_PRESETS).map(([key, preset]) => ({
                 key,
                 name: preset.name
@@ -1049,6 +1164,10 @@ createApp({
                 optionLayout: '选项排布',
                 validationPattern: '校验规则',
                 validationMessage: '校验提示',
+                conditionEnabled: '条件显隐',
+                conditionFieldKey: '依赖字段',
+                conditionOperator: '判断方式',
+                conditionValue: '比较值',
                 width: '宽度',
                 height: '高度',
                 style: '内联样式',
@@ -1076,6 +1195,10 @@ createApp({
                 optionLayout: 'text',
                 validationPattern: 'text',
                 validationMessage: 'text',
+                conditionEnabled: 'checkbox',
+                conditionFieldKey: 'text',
+                conditionOperator: 'text',
+                conditionValue: 'text',
                 content: 'text',
                 class: 'text',
                 style: 'text',
@@ -1184,6 +1307,11 @@ createApp({
         fieldDefinitionMap() {
             return this.buildFieldDefinitionMap();
         },
+        currentPageFieldDefinitionMap() {
+            return this.buildPageFieldDefinitionMap({
+                pageName: this.currentPage.name || 'index'
+            });
+        },
         selectedSubmission() {
             if (!this.selectedSubmissionId) {
                 return null;
@@ -1277,7 +1405,7 @@ createApp({
             ];
             const textareaKeys = new Set(['style', 'options']);
             const checkboxKeys = new Set(['required', 'submitResetForm']);
-            const hiddenKeys = new Set(['actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitRedirectUrl', 'submitResetForm']);
+            const hiddenKeys = new Set(['actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitRedirectUrl', 'submitResetForm', 'conditionEnabled', 'conditionFieldKey', 'conditionOperator', 'conditionValue']);
             const selectKeys = new Set(['inputType', 'optionLayout', 'submitMethod']);
 
             if (this.selectedElement.type === 'text') {
@@ -1305,6 +1433,42 @@ createApp({
         selectedElementType() {
             return this.selectedElement ? this.selectedElement.type : '';
         },
+        selectedElementFieldKey() {
+            return resolveElementFieldKey(this.selectedElement);
+        },
+        conditionalFieldOptions() {
+            return Object.values(this.currentPageFieldDefinitionMap)
+                .filter((field) => field.key !== this.selectedElementFieldKey)
+                .sort((left, right) => String(left.label || left.key).localeCompare(String(right.label || right.key), 'zh-CN'));
+        },
+        selectedConditionOperator() {
+            if (!this.selectedElement) {
+                return 'equals';
+            }
+
+            return normalizeConditionOperator(this.selectedElement.props.conditionOperator || 'equals');
+        },
+        selectedConditionSourceDefinition() {
+            if (!this.selectedElement) {
+                return null;
+            }
+
+            const fieldKey = this.selectedElement.props.conditionFieldKey || '';
+            return this.currentPageFieldDefinitionMap[fieldKey] || null;
+        },
+        shouldShowConditionValue() {
+            return !['filled', 'empty'].includes(this.selectedConditionOperator);
+        },
+        selectedConditionValueOptions() {
+            const definition = this.selectedConditionSourceDefinition;
+            return definition && Array.isArray(definition.options) ? definition.options : [];
+        },
+        shouldUseConditionValueOptions() {
+            return this.shouldShowConditionValue && this.selectedConditionValueOptions.length > 0;
+        },
+        selectedConditionSummary() {
+            return describeConditionRule(this.selectedElement ? this.selectedElement.props : {}, this.currentPageFieldDefinitionMap);
+        },
         canUndo() {
             return this.historyIndex > 0;
         },
@@ -1320,6 +1484,9 @@ createApp({
         window.addEventListener('keydown', this.handleKeydown);
         window.addEventListener('dragend', this.clearDropTarget);
         window.builderSubmitAction = (trigger, config = {}) => this.handleBuilderSubmitAction(trigger, config);
+        this.$nextTick(() => {
+            this.setupPreviewStageListeners();
+        });
 
         if (this.draftInfo) {
             this.setStatus('发现本地草稿，可在左侧项目管理区域恢复。', 'info');
@@ -1328,6 +1495,7 @@ createApp({
     unmounted() {
         window.removeEventListener('keydown', this.handleKeydown);
         window.removeEventListener('dragend', this.clearDropTarget);
+        this.teardownPreviewStageListeners();
 
         if (this.statusTimer) {
             window.clearTimeout(this.statusTimer);
@@ -1666,6 +1834,86 @@ createApp({
 
             this.applySelectedProps(presets[type]);
         },
+        getConditionDefaultValueForField(fieldKey) {
+            const definition = this.currentPageFieldDefinitionMap[fieldKey] || null;
+            const options = definition && Array.isArray(definition.options) ? definition.options : [];
+
+            return options.length > 0 ? String(options[0].value || '') : '';
+        },
+        handleConditionEnabledChange(enabled) {
+            if (!this.selectedElement) {
+                return;
+            }
+
+            if (!enabled) {
+                this.applySelectedProps({
+                    conditionEnabled: false
+                });
+                return;
+            }
+
+            const conditionFieldKey = this.selectedElement.props.conditionFieldKey
+                || (this.conditionalFieldOptions[0] && this.conditionalFieldOptions[0].key)
+                || '';
+            const conditionOperator = normalizeConditionOperator(this.selectedElement.props.conditionOperator || 'equals');
+            const nextProps = {
+                conditionEnabled: true,
+                conditionFieldKey,
+                conditionOperator
+            };
+
+            if (['filled', 'empty'].includes(conditionOperator)) {
+                nextProps.conditionValue = '';
+            } else {
+                nextProps.conditionValue = this.selectedElement.props.conditionValue || this.getConditionDefaultValueForField(conditionFieldKey);
+            }
+
+            this.applySelectedProps(nextProps);
+        },
+        handleConditionFieldChange(fieldKey) {
+            if (!this.selectedElement) {
+                return;
+            }
+
+            const operator = this.selectedConditionOperator;
+            const nextProps = {
+                conditionFieldKey: fieldKey
+            };
+            const definition = this.currentPageFieldDefinitionMap[fieldKey] || null;
+            const options = definition && Array.isArray(definition.options) ? definition.options : [];
+
+            if (['filled', 'empty'].includes(operator)) {
+                nextProps.conditionValue = '';
+            } else if (options.length > 0) {
+                const currentValue = this.selectedElement.props.conditionValue || '';
+                const hasCurrentValue = options.some((option) => String(option.value) === String(currentValue));
+                nextProps.conditionValue = hasCurrentValue ? currentValue : String(options[0].value || '');
+            }
+
+            this.applySelectedProps(nextProps);
+        },
+        handleConditionOperatorChange(operator) {
+            if (!this.selectedElement) {
+                return;
+            }
+
+            const nextOperator = normalizeConditionOperator(operator);
+            const nextProps = {
+                conditionOperator: nextOperator
+            };
+
+            if (['filled', 'empty'].includes(nextOperator)) {
+                nextProps.conditionValue = '';
+            } else if (this.selectedConditionValueOptions.length > 0) {
+                const currentValue = this.selectedElement.props.conditionValue || '';
+                const hasCurrentValue = this.selectedConditionValueOptions.some((option) => String(option.value) === String(currentValue));
+                nextProps.conditionValue = hasCurrentValue
+                    ? currentValue
+                    : String(this.selectedConditionValueOptions[0].value || '');
+            }
+
+            this.applySelectedProps(nextProps);
+        },
         applyWidthPreset(width) {
             this.applySelectedProps({ width });
         },
@@ -1797,9 +2045,8 @@ createApp({
             (elements || []).forEach((element) => {
                 const props = element && element.props ? element.props : {};
                 const type = element && element.type ? element.type : '';
-                const supportedTypes = ['input', 'textarea', 'select', 'radio-group', 'checkbox-group'];
 
-                if (supportedTypes.includes(type)) {
+                if (FORM_FIELD_TYPES.includes(type)) {
                     const fallbackKey = `field_${String(element.id || type).replace(/[^\w-]+/g, '_')}`;
                     const fieldKey = props.fieldKey || fallbackKey;
 
@@ -2111,7 +2358,7 @@ createApp({
             const normalized = {
                 id: element.id || createId('el'),
                 type: element.type,
-                props: element.props && typeof element.props === 'object' ? { ...element.props } : {},
+                props: applyConditionalDefaults(element.props && typeof element.props === 'object' ? { ...element.props } : {}),
                 children: []
             };
 
@@ -2535,22 +2782,22 @@ createApp({
         getDefaultProps(type) {
             switch (type) {
                 case 'text':
-                    return {
+                    return applyConditionalDefaults({
                         content: '双击左侧组件后拖到画布，点击这里即可编辑文案。',
                         class: '',
                         width: '',
                         style: 'font-size: 16px; line-height: 1.7;'
-                    };
+                    });
                 case 'image':
-                    return {
+                    return applyConditionalDefaults({
                         src: '',
                         alt: '图片',
                         class: '',
                         width: '100%',
                         style: 'max-width: 320px;'
-                    };
+                    });
                 case 'button':
-                    return {
+                    return applyConditionalDefaults({
                         text: '立即操作',
                         class: 'btn btn-primary',
                         width: '',
@@ -2561,9 +2808,9 @@ createApp({
                         submitMethod: 'POST',
                         submitResetForm: false,
                         submitRedirectUrl: ''
-                    };
+                    });
                 case 'input':
-                    return {
+                    return applyConditionalDefaults({
                         label: '输入项',
                         required: false,
                         placeholder: '请输入内容',
@@ -2575,9 +2822,9 @@ createApp({
                         class: 'form-control',
                         width: '',
                         style: ''
-                    };
+                    });
                 case 'textarea':
-                    return {
+                    return applyConditionalDefaults({
                         label: '多行输入',
                         required: false,
                         placeholder: '请输入多行内容',
@@ -2589,9 +2836,9 @@ createApp({
                         class: 'form-control',
                         width: '',
                         style: ''
-                    };
+                    });
                 case 'select':
-                    return {
+                    return applyConditionalDefaults({
                         label: '下拉选择',
                         required: false,
                         placeholder: '请选择',
@@ -2601,9 +2848,9 @@ createApp({
                         class: 'form-control',
                         width: '',
                         style: ''
-                    };
+                    });
                 case 'radio-group':
-                    return {
+                    return applyConditionalDefaults({
                         label: '单选项',
                         required: false,
                         value: '',
@@ -2613,9 +2860,9 @@ createApp({
                         class: '',
                         width: '',
                         style: ''
-                    };
+                    });
                 case 'checkbox-group':
-                    return {
+                    return applyConditionalDefaults({
                         label: '多选项',
                         required: false,
                         value: '',
@@ -2625,32 +2872,32 @@ createApp({
                         class: '',
                         width: '',
                         style: ''
-                    };
+                    });
                 case 'spacer':
-                    return {
+                    return applyConditionalDefaults({
                         height: '32px',
                         class: '',
                         width: '100%',
                         style: ''
-                    };
+                    });
                 case 'row':
-                    return {
+                    return applyConditionalDefaults({
                         class: '',
                         width: '',
                         style: 'gap: 16px; align-items: flex-start;'
-                    };
+                    });
                 case 'div':
-                    return {
+                    return applyConditionalDefaults({
                         class: '',
                         width: '',
                         style: 'padding: 16px;'
-                    };
+                    });
                 default:
-                    return {
+                    return applyConditionalDefaults({
                         class: '',
                         width: '',
                         style: ''
-                    };
+                    });
             }
         },
         selectElement(elementId) {
@@ -2978,6 +3225,44 @@ createApp({
 
             return json;
         },
+        setupPreviewStageListeners() {
+            const stage = this.$refs.previewStage;
+
+            if (!stage || stage.dataset.previewListenersBound === '1') {
+                return;
+            }
+
+            this.previewStageInteractionHandler = (event) => {
+                const scope = event.target && typeof event.target.closest === 'function'
+                    ? (event.target.closest('.page') || stage)
+                    : stage;
+                this.refreshPreviewConditionalVisibility(scope);
+            };
+            stage.addEventListener('input', this.previewStageInteractionHandler);
+            stage.addEventListener('change', this.previewStageInteractionHandler);
+            stage.dataset.previewListenersBound = '1';
+        },
+        teardownPreviewStageListeners() {
+            const stage = this.$refs.previewStage;
+
+            if (!stage || !this.previewStageInteractionHandler) {
+                return;
+            }
+
+            stage.removeEventListener('input', this.previewStageInteractionHandler);
+            stage.removeEventListener('change', this.previewStageInteractionHandler);
+            delete stage.dataset.previewListenersBound;
+            this.previewStageInteractionHandler = null;
+        },
+        getPreviewFields(scope) {
+            return Array.from((scope || this.$refs.previewStage || document).querySelectorAll('[data-builder-field="true"]'));
+        },
+        isPreviewFieldVisible(field) {
+            return !(field && typeof field.closest === 'function' && field.closest('[data-conditional-hidden="1"]'));
+        },
+        getActivePreviewFields(scope) {
+            return this.getPreviewFields(scope).filter((field) => this.isPreviewFieldVisible(field));
+        },
         async requestBlob(url, payload) {
             const response = await fetch(url, {
                 method: 'POST',
@@ -3016,6 +3301,54 @@ createApp({
             }
 
             return field && field.value !== undefined ? field.value : '';
+        },
+        collectPreviewFieldValues(scope) {
+            const fieldValues = {};
+
+            this.getPreviewFields(scope).forEach((field) => {
+                const fieldKey = field.dataset.fieldKey || `field_${Object.keys(fieldValues).length + 1}`;
+                fieldValues[fieldKey] = this.getPreviewFieldValue(field);
+            });
+
+            return fieldValues;
+        },
+        refreshPreviewConditionalVisibility(scope) {
+            const container = scope || this.$refs.previewStage || document;
+            const conditionalBlocks = Array.from(container.querySelectorAll('[data-visibility-enabled="1"]'));
+
+            if (conditionalBlocks.length === 0) {
+                return;
+            }
+
+            const fieldValues = this.collectPreviewFieldValues(container);
+
+            conditionalBlocks.forEach((block) => {
+                const fieldKey = block.dataset.visibilityField || '';
+                const operator = block.dataset.visibilityOperator || 'equals';
+                const expectedValue = block.dataset.visibilityValue || '';
+                const isVisible = !fieldKey
+                    ? true
+                    : evaluateConditionRule(fieldValues[fieldKey], operator, expectedValue);
+
+                block.hidden = !isVisible;
+                block.dataset.conditionalHidden = isVisible ? '0' : '1';
+            });
+        },
+        refreshAllPreviewConditionalVisibility() {
+            const stage = this.$refs.previewStage;
+
+            if (!stage) {
+                return;
+            }
+
+            const pages = Array.from(stage.querySelectorAll('.page'));
+
+            if (pages.length === 0) {
+                this.refreshPreviewConditionalVisibility(stage);
+                return;
+            }
+
+            pages.forEach((page) => this.refreshPreviewConditionalVisibility(page));
         },
         isPreviewFieldEmpty(value) {
             return Array.isArray(value) ? value.length === 0 : !String(value || '').trim();
@@ -3124,7 +3457,7 @@ createApp({
         },
         async handleBuilderSubmitAction(trigger, config = {}) {
             const scope = trigger.closest('.page') || document;
-            const fields = Array.from(scope.querySelectorAll('[data-builder-field="true"]'));
+            const fields = this.getActivePreviewFields(scope);
             const invalidField = fields.find((field) => this.validatePreviewField(field));
 
             if (invalidField) {
@@ -3153,9 +3486,10 @@ createApp({
             }
 
             if (config.resetForm) {
-                fields.forEach((field) => {
+                this.getPreviewFields(scope).forEach((field) => {
                     this.resetPreviewField(field);
                 });
+                this.refreshPreviewConditionalVisibility(scope);
             }
 
             window.alert(config.successMessage || '提交成功');
@@ -3377,6 +3711,10 @@ createApp({
                 this.previewHtml = json.code || '';
                 this.hasPreview = /<([A-Za-z][\w-]*)\b|\S/.test(this.previewHtml);
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('previewModal')).show();
+                this.$nextTick(() => {
+                    this.setupPreviewStageListeners();
+                    this.refreshAllPreviewConditionalVisibility();
+                });
                 this.setStatus('预览内容已更新。', 'success');
             } catch (error) {
                 this.setStatus(error.message || '预览失败。', 'danger');
@@ -3418,6 +3756,7 @@ createApp({
     beforeUnmount() {
         window.removeEventListener('keydown', this.handleKeydown);
         window.removeEventListener('dragend', this.clearDropTarget);
+        this.teardownPreviewStageListeners();
 
         if (this.statusTimer) {
             window.clearTimeout(this.statusTimer);

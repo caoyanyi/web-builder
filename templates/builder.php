@@ -574,6 +574,7 @@
                                 :element="element"
                                 :selected-element-id="selectedElementId"
                                 :drop-state="getDropStateForElement(element.id)"
+                                :field-definitions="currentPageFieldDefinitionMap"
                                 @select-element="selectElement"
                                 @remove-element="removeElement"
                                 @duplicate-element="duplicateElement"
@@ -831,6 +832,78 @@
                             </div>
                         </div>
 
+                        <div class="property-shortcuts">
+                            <label class="form-label">条件显隐</label>
+                            <div class="form-check form-switch builder-switch">
+                                <input
+                                    class="form-check-input"
+                                    type="checkbox"
+                                    :checked="Boolean(selectedElement.props.conditionEnabled)"
+                                    @change="handleConditionEnabledChange($event.target.checked)"
+                                >
+                                <label class="form-check-label">根据当前页其他字段值决定是否显示</label>
+                            </div>
+
+                            <div v-if="selectedElement.props.conditionEnabled" class="border rounded p-3 mt-3 bg-light">
+                                <div v-if="conditionalFieldOptions.length === 0" class="form-text">
+                                    当前页还没有可作为条件源的表单字段，请先添加输入框、选择框或选项组。
+                                </div>
+                                <template v-else>
+                                    <div>
+                                        <label class="form-label">依赖字段</label>
+                                        <select
+                                            class="form-select"
+                                            :value="selectedElement.props.conditionFieldKey || conditionalFieldOptions[0].key"
+                                            @change="handleConditionFieldChange($event.target.value)"
+                                        >
+                                            <option v-for="field in conditionalFieldOptions" :key="field.key" :value="field.key">
+                                                {{ field.label }}（{{ field.key }}）
+                                            </option>
+                                        </select>
+                                    </div>
+                                    <div class="mt-3">
+                                        <label class="form-label">判断方式</label>
+                                        <div class="shortcut-grid">
+                                            <button
+                                                v-for="option in conditionOperatorOptions"
+                                                :key="option.value"
+                                                type="button"
+                                                :class="['btn btn-sm', selectedConditionOperator === option.value ? 'btn-success' : 'btn-outline-secondary']"
+                                                @click="handleConditionOperatorChange(option.value)"
+                                            >
+                                                {{ option.label }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div v-if="shouldShowConditionValue" class="mt-3">
+                                        <label class="form-label">比较值</label>
+                                        <select
+                                            v-if="shouldUseConditionValueOptions"
+                                            class="form-select"
+                                            :value="selectedElement.props.conditionValue || ''"
+                                            @change="updateElementProp('conditionValue', $event.target.value)"
+                                        >
+                                            <option v-for="option in selectedConditionValueOptions" :key="option.value" :value="option.value">
+                                                {{ option.label }}
+                                            </option>
+                                        </select>
+                                        <input
+                                            v-else
+                                            type="text"
+                                            class="form-control"
+                                            :value="selectedElement.props.conditionValue || ''"
+                                            placeholder="例如：yes / pro / enterprise"
+                                            @input="updateElementProp('conditionValue', $event.target.value)"
+                                        >
+                                        <div class="form-text">多选字段建议优先使用“包含 / 不包含”；隐藏后的字段不会参与校验和提交。</div>
+                                    </div>
+                                    <div v-if="selectedConditionSummary" class="form-text mt-3">
+                                        当前规则：{{ selectedConditionSummary }}
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
                         <div v-if="selectedElementType === 'spacer'" class="property-shortcuts">
                             <label class="form-label">间距快捷配置</label>
                             <div class="shortcut-grid shortcut-grid-tight">
@@ -940,7 +1013,7 @@
                     </div>
                     <div class="modal-body">
                         <div :class="['preview-shell', `preview-shell-${viewportMode}`]">
-                            <div class="preview-stage" :style="projectThemeStyle" v-html="previewHtml"></div>
+                            <div ref="previewStage" class="preview-stage" :style="projectThemeStyle" v-html="previewHtml"></div>
                         </div>
                         <div v-if="!hasPreview" class="text-muted small mt-3">暂无内容，请先在画布中添加组件。</div>
                     </div>

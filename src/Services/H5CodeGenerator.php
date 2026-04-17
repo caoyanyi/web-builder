@@ -299,6 +299,18 @@ class App {
                 this.loadPage(pageName);
             }
         });
+
+        document.addEventListener('input', (event) => {
+            if (event.target && typeof event.target.closest === 'function' && event.target.closest('[data-builder-field="true"]')) {
+                this.refreshConditionalVisibility(event.target.closest('.page') || document);
+            }
+        });
+
+        document.addEventListener('change', (event) => {
+            if (event.target && typeof event.target.closest === 'function' && event.target.closest('[data-builder-field="true"]')) {
+                this.refreshConditionalVisibility(event.target.closest('.page') || document);
+            }
+        });
     }
 
     getButtonActionCode(props = {}) {
@@ -361,6 +373,84 @@ class App {
         }
 
         return field.value || '';
+    }
+
+    getFormFields(scope = document) {
+        return Array.from((scope || document).querySelectorAll('[data-builder-field="true"]'));
+    }
+
+    isFieldVisible(field) {
+        return !(field && typeof field.closest === 'function' && field.closest('[data-conditional-hidden="1"]'));
+    }
+
+    getActiveFormFields(scope = document) {
+        return this.getFormFields(scope).filter((field) => this.isFieldVisible(field));
+    }
+
+    collectFormValues(scope = document) {
+        const values = {};
+
+        this.getFormFields(scope).forEach((field) => {
+            const fieldKey = field.dataset.fieldKey || field.name || `field_${Object.keys(values).length + 1}`;
+            values[fieldKey] = this.getFieldValue(field);
+        });
+
+        return values;
+    }
+
+    evaluateConditionRule(actualValue, operator = 'equals', expectedValue = '') {
+        const normalizedExpected = String(expectedValue || '').trim();
+        const normalizedActual = Array.isArray(actualValue)
+            ? actualValue.map((item) => String(item || '').trim()).filter(Boolean)
+            : String(actualValue || '').trim();
+
+        if (operator === 'filled') {
+            return Array.isArray(normalizedActual) ? normalizedActual.length > 0 : normalizedActual !== '';
+        }
+
+        if (operator === 'empty') {
+            return Array.isArray(normalizedActual) ? normalizedActual.length === 0 : normalizedActual === '';
+        }
+
+        if (Array.isArray(normalizedActual)) {
+            const included = normalizedActual.includes(normalizedExpected);
+            return operator === 'not_contains' ? !included : included;
+        }
+
+        if (operator === 'contains') {
+            return normalizedExpected !== '' && normalizedActual.includes(normalizedExpected);
+        }
+
+        if (operator === 'not_contains') {
+            return normalizedExpected === '' ? true : !normalizedActual.includes(normalizedExpected);
+        }
+
+        if (operator === 'not_equals') {
+            return normalizedActual !== normalizedExpected;
+        }
+
+        return normalizedActual === normalizedExpected;
+    }
+
+    refreshConditionalVisibility(scope = document) {
+        const container = scope || document;
+        const conditionalBlocks = Array.from(container.querySelectorAll('[data-visibility-enabled="1"]'));
+
+        if (conditionalBlocks.length === 0) {
+            return;
+        }
+
+        const fieldValues = this.collectFormValues(container);
+
+        conditionalBlocks.forEach((block) => {
+            const fieldKey = block.dataset.visibilityField || '';
+            const operator = block.dataset.visibilityOperator || 'equals';
+            const expectedValue = block.dataset.visibilityValue || '';
+            const isVisible = !fieldKey ? true : this.evaluateConditionRule(fieldValues[fieldKey], operator, expectedValue);
+
+            block.hidden = !isVisible;
+            block.dataset.conditionalHidden = isVisible ? '0' : '1';
+        });
     }
 
     isEmptyFieldValue(value) {
@@ -515,7 +605,7 @@ class App {
 
     async handleSubmitAction(trigger, config = {}) {
         const scope = trigger.closest('.page') || document;
-        const fields = Array.from(scope.querySelectorAll('[data-builder-field="true"]'));
+        const fields = this.getActiveFormFields(scope);
         const invalidField = fields.find((field) => this.validateField(field));
 
         if (invalidField) {
@@ -545,9 +635,10 @@ class App {
         }
 
         if (config.resetForm) {
-            fields.forEach((field) => {
+            this.getFormFields(scope).forEach((field) => {
                 this.resetField(field);
             });
+            this.refreshConditionalVisibility(scope);
         }
 
         alert(config.successMessage || '提交成功');
@@ -572,6 +663,7 @@ class App {
         const app = document.getElementById('app');
         app.innerHTML = this.generatePageHtml(page);
         this.loadPageScripts(page);
+        this.refreshConditionalVisibility(app.querySelector('.page') || app);
     }
     
     generatePageHtml(page) {
@@ -734,6 +826,7 @@ JS;
         $type = $element['type'];
         $props = $element['props'] ?? [];
         $children = $element['children'] ?? [];
+        $html = '';
         
         switch ($type) {
             case 'div':
@@ -744,7 +837,8 @@ JS;
                     $childrenHtml .= $this->generateElementHtml($child);
                 }
                 $emptyContent = empty($children) ? '        <div class="text-muted text-sm w-100 text-center py-2">拖拽组件到此处</div>' : '';
-                return "    <div class='w-100 p-3 border relative {$class}' style='{$style}'>\n  <div class='w-100 mt-4'>\n{$emptyContent}\n{$childrenHtml}        </div>\n    </div>\n";
+                $html = "    <div class='w-100 p-3 border relative {$class}' style='{$style}'>\n  <div class='w-100 mt-4'>\n{$emptyContent}\n{$childrenHtml}        </div>\n    </div>\n";
+                break;
                 
             case 'row':
                 $class = $props['class'] ?? 'border-info bg-white';
@@ -754,27 +848,31 @@ JS;
                     $childrenHtml .= $this->generateElementHtml($child);
                 }
                 $emptyContent = empty($children) ? '        <div class="text-muted text-sm w-100 text-center py-2">拖拽组件到此处</div>' : '';
-                return "    <div class='w-100 d-flex flex-wrap p-3 border relative {$class}' style='display:flex; flex-wrap:wrap; {$style}'>\n{$emptyContent}\n{$childrenHtml}    </div>\n";
+                $html = "    <div class='w-100 d-flex flex-wrap p-3 border relative {$class}' style='display:flex; flex-wrap:wrap; {$style}'>\n{$emptyContent}\n{$childrenHtml}    </div>\n";
+                break;
                 
             case 'text':
                 $content = $props['content'] ?? '';
                 $class = $props['class'] ?? '';
                 $style = $props['style'] ?? '';
-                return "    <p class=\"{$class}\" style=\"{$style}\">{$content}</p>\n";
+                $html = "    <p class=\"{$class}\" style=\"{$style}\">{$content}</p>\n";
+                break;
                 
             case 'image':
                 $src = $props['src'] ?? '';
                 $class = $props['class'] ?? '';
                 $style = $props['style'] ?? '';
                 $alt = $props['alt'] ?? '';
-                return "    <img src=\"{$src}\" class=\"{$class}\" style=\"{$style}\" alt=\"{$alt}\">\n";
+                $html = "    <img src=\"{$src}\" class=\"{$class}\" style=\"{$style}\" alt=\"{$alt}\">\n";
+                break;
                 
             case 'button':
                 $text = $props['text'] ?? '按钮';
                 $class = $props['class'] ?? '';
                 $style = $props['style'] ?? '';
                 $onclick = htmlspecialchars($this->resolveButtonActionCode($props), ENT_QUOTES, 'UTF-8');
-                return "    <button class=\"{$class}\" style=\"{$style}\" onclick=\"{$onclick}\">{$text}</button>\n";
+                $html = "    <button class=\"{$class}\" style=\"{$style}\" onclick=\"{$onclick}\">{$text}</button>\n";
+                break;
 
             case 'input':
                 $label = $props['label'] ?? '';
@@ -792,7 +890,8 @@ JS;
                 $wrapperStyle = $width ? "width: {$width};" : '';
                 $labelHtml = $label ? "    <label style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
                 $requiredAttr = !empty($props['required']) ? '1' : '0';
-                return "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <input type=\"{$inputType}\" data-builder-field=\"true\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" data-pattern=\"{$validationPattern}\" data-validation-message=\"{$validationMessage}\" class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{$value}\">\n    </div>\n";
+                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <input type=\"{$inputType}\" data-builder-field=\"true\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" data-pattern=\"{$validationPattern}\" data-validation-message=\"{$validationMessage}\" class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{$value}\">\n    </div>\n";
+                break;
 
             case 'textarea':
                 $label = $props['label'] ?? '';
@@ -810,7 +909,8 @@ JS;
                 $wrapperStyle = $width ? "width: {$width};" : '';
                 $labelHtml = $label ? "    <label style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
                 $requiredAttr = !empty($props['required']) ? '1' : '0';
-                return "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <textarea data-builder-field=\"true\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" data-pattern=\"{$validationPattern}\" data-validation-message=\"{$validationMessage}\" class=\"{$class}\" style=\"{$style}\" rows=\"{$rows}\" placeholder=\"{$placeholder}\">{$value}</textarea>\n    </div>\n";
+                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <textarea data-builder-field=\"true\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" data-pattern=\"{$validationPattern}\" data-validation-message=\"{$validationMessage}\" class=\"{$class}\" style=\"{$style}\" rows=\"{$rows}\" placeholder=\"{$placeholder}\">{$value}</textarea>\n    </div>\n";
+                break;
 
             case 'select':
                 $label = $props['label'] ?? '';
@@ -825,7 +925,8 @@ JS;
                 $labelHtml = $label ? "    <label style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
                 $requiredAttr = !empty($props['required']) ? '1' : '0';
                 $optionsHtml = $this->buildSelectOptionsHtml($props['options'] ?? '', $props['value'] ?? '', $placeholder);
-                return "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <select data-builder-field=\"true\" data-field-kind=\"select\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" class=\"{$class}\" style=\"{$style}\">{$optionsHtml}</select>\n    </div>\n";
+                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <select data-builder-field=\"true\" data-field-kind=\"select\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" class=\"{$class}\" style=\"{$style}\">{$optionsHtml}</select>\n    </div>\n";
+                break;
 
             case 'radio-group':
                 $label = $props['label'] ?? '';
@@ -839,7 +940,8 @@ JS;
                 $labelHtml = $label ? "    <label style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
                 $requiredAttr = !empty($props['required']) ? '1' : '0';
                 $optionsHtml = $this->buildChoiceGroupHtml('radio', $props['options'] ?? '', $props['value'] ?? '', $fieldKey);
-                return "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <div data-builder-field=\"true\" data-field-kind=\"radio-group\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" class=\"{$class}\" style=\"{$style}\">{$optionsHtml}</div>\n    </div>\n";
+                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <div data-builder-field=\"true\" data-field-kind=\"radio-group\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" class=\"{$class}\" style=\"{$style}\">{$optionsHtml}</div>\n    </div>\n";
+                break;
 
             case 'checkbox-group':
                 $label = $props['label'] ?? '';
@@ -853,23 +955,29 @@ JS;
                 $labelHtml = $label ? "    <label style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
                 $requiredAttr = !empty($props['required']) ? '1' : '0';
                 $optionsHtml = $this->buildChoiceGroupHtml('checkbox', $props['options'] ?? '', $props['value'] ?? '', $fieldKey);
-                return "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <div data-builder-field=\"true\" data-field-kind=\"checkbox-group\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" class=\"{$class}\" style=\"{$style}\">{$optionsHtml}</div>\n    </div>\n";
+                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <div data-builder-field=\"true\" data-field-kind=\"checkbox-group\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" class=\"{$class}\" style=\"{$style}\">{$optionsHtml}</div>\n    </div>\n";
+                break;
 
             case 'spacer':
                 $height = $props['height'] ?? '32px';
                 $class = $props['class'] ?? '';
                 $style = $props['style'] ?? '';
-                return "    <div class=\"{$class}\" style=\"height: {$height}; {$style}\"></div>\n";
+                $html = "    <div class=\"{$class}\" style=\"height: {$height}; {$style}\"></div>\n";
+                break;
                 
             case 'form':
                 $content = $props['content'] ?? '';
                 $class = $props['class'] ?? '';
                 $style = $props['style'] ?? '';
-                return "    <form class=\"{$class}\" style=\"{$style}\">\n        {$content}\n    </form>\n";
+                $html = "    <form class=\"{$class}\" style=\"{$style}\">\n        {$content}\n    </form>\n";
+                break;
                 
             default:
-                return "    <!-- 未知元素类型: {$type} -->\n";
+                $html = "    <!-- 未知元素类型: {$type} -->\n";
+                break;
         }
+
+        return $this->wrapConditionalHtml($html, $props);
     }
     
     private function generateElementCss($element)
@@ -915,6 +1023,19 @@ JS;
         }
 
         return $props['onclick'] ?? '';
+    }
+
+    private function wrapConditionalHtml(string $html, array $props): string
+    {
+        if (empty($props['conditionEnabled']) || empty($props['conditionFieldKey'])) {
+            return $html;
+        }
+
+        $fieldKey = htmlspecialchars((string) ($props['conditionFieldKey'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $operator = htmlspecialchars((string) ($props['conditionOperator'] ?? 'equals'), ENT_QUOTES, 'UTF-8');
+        $value = htmlspecialchars((string) ($props['conditionValue'] ?? ''), ENT_QUOTES, 'UTF-8');
+
+        return "    <div data-visibility-enabled=\"1\" data-visibility-field=\"{$fieldKey}\" data-visibility-operator=\"{$operator}\" data-visibility-value=\"{$value}\">\n{$html}    </div>\n";
     }
 
     private function buildSelectOptionsHtml($rawOptions, $selectedValue, $placeholder): string

@@ -198,6 +198,7 @@ page {
         }
 
         $formSchema = $this->extractFormSchema($page['elements'] ?? []);
+        $visibilityRules = $this->extractVisibilityRules($page['elements'] ?? []);
         $formValues = [];
         $formSchemaMap = [];
         $formDisplayValues = [];
@@ -220,6 +221,8 @@ page {
         $data['formSchemaMap'] = $formSchemaMap;
         $data['formDisplayValues'] = $formDisplayValues;
         $data['formCheckedMap'] = $formCheckedMap;
+        $data['visibilityRules'] = $visibilityRules;
+        $data['visibilityState'] = $this->buildInitialVisibilityState($visibilityRules, $formValues);
         $data['builderProjectTitle'] = $config['title'] ?? '未命名项目';
         $data['builderProjectType'] = 'wechat';
         $data['builderPageName'] = $page['name'] ?? 'index';
@@ -236,7 +239,67 @@ page {
         return "Page({
   data: {$dataStr},
   
-{$methodsStr}  handleFieldInput(event) {
+{$methodsStr}  evaluateVisibilityRule(actualValue, operator = 'equals', expectedValue = '') {
+    const normalizedExpected = String(expectedValue || '').trim();
+    const normalizedActual = Array.isArray(actualValue)
+      ? actualValue.map((item) => String(item || '').trim()).filter(Boolean)
+      : String(actualValue || '').trim();
+
+    if (operator === 'filled') {
+      return Array.isArray(normalizedActual) ? normalizedActual.length > 0 : normalizedActual !== '';
+    }
+
+    if (operator === 'empty') {
+      return Array.isArray(normalizedActual) ? normalizedActual.length === 0 : normalizedActual === '';
+    }
+
+    if (Array.isArray(normalizedActual)) {
+      const included = normalizedActual.includes(normalizedExpected);
+      return operator === 'not_contains' ? !included : included;
+    }
+
+    if (operator === 'contains') {
+      return normalizedExpected !== '' && normalizedActual.includes(normalizedExpected);
+    }
+
+    if (operator === 'not_contains') {
+      return normalizedExpected === '' ? true : !normalizedActual.includes(normalizedExpected);
+    }
+
+    if (operator === 'not_equals') {
+      return normalizedActual !== normalizedExpected;
+    }
+
+    return normalizedActual === normalizedExpected;
+  },
+
+  refreshVisibilityState(callback) {
+    const rules = this.data.visibilityRules || {};
+    const values = this.data.formValues || {};
+    const nextVisibilityState = {};
+
+    Object.keys(rules).forEach((key) => {
+      const rule = rules[key] || {};
+      nextVisibilityState[key] = !rule.fieldKey
+        ? true
+        : this.evaluateVisibilityRule(values[rule.fieldKey], rule.operator || 'equals', rule.value || '');
+    });
+
+    this.setData({
+      visibilityState: nextVisibilityState
+    }, callback);
+  },
+
+  isFieldVisible(field) {
+    if (!field || !field.visibilityKey) {
+      return true;
+    }
+
+    const visibilityState = this.data.visibilityState || {};
+    return visibilityState[field.visibilityKey] !== false;
+  },
+
+  handleFieldInput(event) {
     const { fieldKey = '', fieldType = 'text' } = event.currentTarget.dataset || {};
 
     if (!fieldKey) {
@@ -246,7 +309,9 @@ page {
     const nextData = {};
     const nextValue = fieldType === 'number' ? String(event.detail.value || '').replace(/[^\d.]/g, '') : event.detail.value;
     nextData['formValues.' + fieldKey] = nextValue;
-    this.setData(nextData);
+    this.setData(nextData, () => {
+      this.refreshVisibilityState();
+    });
   },
 
   handlePickerChange(event) {
@@ -269,7 +334,9 @@ page {
     const nextData = {};
     nextData['formValues.' + fieldKey] = selectedOption.value;
     nextData['formDisplayValues.' + fieldKey] = selectedOption.label || selectedOption.value || (fieldSchema.placeholder || '请选择');
-    this.setData(nextData);
+    this.setData(nextData, () => {
+      this.refreshVisibilityState();
+    });
   },
 
   handleChoiceChange(event) {
@@ -293,13 +360,17 @@ page {
       const nextData = {};
       nextData['formValues.' + fieldKey] = selectedValues;
       nextData['formCheckedMap.' + fieldKey] = checkedMap;
-      this.setData(nextData);
+      this.setData(nextData, () => {
+        this.refreshVisibilityState();
+      });
       return;
     }
 
     const nextData = {};
     nextData['formValues.' + fieldKey] = event.detail.value || '';
-    this.setData(nextData);
+    this.setData(nextData, () => {
+      this.refreshVisibilityState();
+    });
   },
 
   handleAction(event) {
@@ -326,8 +397,13 @@ page {
 
     if (actionType === 'submit') {
       const schema = Array.isArray(this.data.formSchema) ? this.data.formSchema : [];
+      const visibleSchema = schema.filter((field) => this.isFieldVisible(field));
       const values = this.data.formValues || {};
-      const invalidField = schema.find((field) => {
+      const submittedValues = visibleSchema.reduce((result, field) => {
+        result[field.key] = values[field.key];
+        return result;
+      }, {});
+      const invalidField = visibleSchema.find((field) => {
         const rawValue = values[field.key];
         const value = Array.isArray(rawValue) ? rawValue.map((item) => String(item || '').trim()).filter(Boolean) : String(rawValue || '').trim();
 
@@ -356,7 +432,7 @@ page {
         return;
       }
 
-      console.log('builder form submit', values);
+      console.log('builder form submit', submittedValues);
 
       const finalizeSubmit = () => {
         if (submitReset === '1') {
@@ -378,7 +454,9 @@ page {
               resetData['formDisplayValues.' + field.key] = field.placeholder || '请选择';
             }
           });
-          this.setData(resetData);
+          this.setData(resetData, () => {
+            this.refreshVisibilityState();
+          });
         }
 
         wx.showToast({
@@ -413,8 +491,8 @@ page {
           page_title: this.data.builderPageTitle || '首页',
           source: 'wechat',
           submitted_at: new Date().toISOString(),
-          form_data: values,
-          field_meta: schema.reduce((result, field) => {
+          form_data: submittedValues,
+          field_meta: visibleSchema.reduce((result, field) => {
             result[field.key] = {
               key: field.key,
               label: field.label || field.key,
@@ -473,7 +551,9 @@ page {
   },
 
   onLoad() {
-    console.log('页面加载');
+    this.refreshVisibilityState(() => {
+      console.log('页面加载');
+    });
   }
 })";
     }
@@ -515,6 +595,7 @@ page {
         $type = $element['type'];
         $props = $element['props'] ?? [];
         $children = $element['children'] ?? [];
+        $wxml = '';
         
         switch ($type) {
             case 'view':
@@ -527,19 +608,22 @@ page {
                 foreach ($children as $child) {
                     $childrenWxml .= $this->generateElementWxml($child);
                 }
-                return "<view class=\"{$class}\" style=\"{$style}\">{$childrenWxml}</view>\n";
+                $wxml = "<view class=\"{$class}\" style=\"{$style}\">{$childrenWxml}</view>\n";
+                break;
                 
             case 'text':
                 $content = $props['content'] ?? '';
                 $class = $props['class'] ?? '';
                 $style = $props['style'] ?? '';
-                return "<text class=\"{$class}\" style=\"{$style}\">{$content}</text>\n";
+                $wxml = "<text class=\"{$class}\" style=\"{$style}\">{$content}</text>\n";
+                break;
                 
             case 'image':
                 $src = $props['src'] ?? '';
                 $class = $props['class'] ?? '';
                 $style = $props['style'] ?? '';
-                return "<image src=\"{$src}\" class=\"{$class}\" style=\"{$style}\" mode=\"aspectFit\"></image>\n";
+                $wxml = "<image src=\"{$src}\" class=\"{$class}\" style=\"{$style}\" mode=\"aspectFit\"></image>\n";
+                break;
                 
             case 'button':
                 $text = $props['text'] ?? '按钮';
@@ -554,7 +638,8 @@ page {
                 $actionAttrs = $actionType !== 'none'
                     ? " bindtap=\"handleAction\" data-action-type=\"{$actionType}\" data-action-value=\"{$actionValue}\" data-submit-endpoint=\"{$submitEndpoint}\" data-submit-method=\"{$submitMethod}\" data-submit-reset=\"{$submitReset}\" data-submit-redirect=\"{$submitRedirect}\""
                     : '';
-                return "<button class=\"{$class}\" style=\"{$style}\"{$actionAttrs}>{$text}</button>\n";
+                $wxml = "<button class=\"{$class}\" style=\"{$style}\"{$actionAttrs}>{$text}</button>\n";
+                break;
 
             case 'input':
                 $label = $props['label'] ?? '';
@@ -567,7 +652,8 @@ page {
                 $fieldType = htmlspecialchars($this->resolveWechatInputType($props['inputType'] ?? 'text'), ENT_QUOTES, 'UTF-8');
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
-                return "<view style=\"{$wrapperStyle}\">{$labelWxml}<input type=\"{$fieldType}\" class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{{formValues.{$fieldKey}}}\" data-field-key=\"{$fieldKey}\" data-field-type=\"{$fieldType}\" bindinput=\"handleFieldInput\" /></view>\n";
+                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<input type=\"{$fieldType}\" class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{{formValues.{$fieldKey}}}\" data-field-key=\"{$fieldKey}\" data-field-type=\"{$fieldType}\" bindinput=\"handleFieldInput\" /></view>\n";
+                break;
 
             case 'textarea':
                 $label = $props['label'] ?? '';
@@ -579,7 +665,8 @@ page {
                 $fieldKey = $this->resolveFieldKey($element);
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
-                return "<view style=\"{$wrapperStyle}\">{$labelWxml}<textarea class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{{formValues.{$fieldKey}}}\" data-field-key=\"{$fieldKey}\" bindinput=\"handleFieldInput\"></textarea></view>\n";
+                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<textarea class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{{formValues.{$fieldKey}}}\" data-field-key=\"{$fieldKey}\" bindinput=\"handleFieldInput\"></textarea></view>\n";
+                break;
 
             case 'select':
                 $label = $props['label'] ?? '';
@@ -590,7 +677,8 @@ page {
                 $fieldKey = $this->resolveFieldKey($element);
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
-                return "<view style=\"{$wrapperStyle}\">{$labelWxml}<picker mode=\"selector\" range=\"{{formSchemaMap.{$fieldKey}.options}}\" range-key=\"label\" data-field-key=\"{$fieldKey}\" bindchange=\"handlePickerChange\"><view class=\"{$class}\" style=\"{$style}\">{{formDisplayValues.{$fieldKey}}}</view></picker></view>\n";
+                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<picker mode=\"selector\" range=\"{{formSchemaMap.{$fieldKey}.options}}\" range-key=\"label\" data-field-key=\"{$fieldKey}\" bindchange=\"handlePickerChange\"><view class=\"{$class}\" style=\"{$style}\">{{formDisplayValues.{$fieldKey}}}</view></picker></view>\n";
+                break;
 
             case 'radio-group':
                 $label = $props['label'] ?? '';
@@ -602,7 +690,8 @@ page {
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
                 $optionsWxml = $this->buildWechatChoiceGroupWxml('radio', $fieldKey);
-                return "<view style=\"{$wrapperStyle}\">{$labelWxml}<radio-group class=\"{$class}\" style=\"{$style}\" data-field-key=\"{$fieldKey}\" data-field-type=\"radio-group\" bindchange=\"handleChoiceChange\">{$optionsWxml}</radio-group></view>\n";
+                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<radio-group class=\"{$class}\" style=\"{$style}\" data-field-key=\"{$fieldKey}\" data-field-type=\"radio-group\" bindchange=\"handleChoiceChange\">{$optionsWxml}</radio-group></view>\n";
+                break;
 
             case 'checkbox-group':
                 $label = $props['label'] ?? '';
@@ -614,17 +703,22 @@ page {
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
                 $optionsWxml = $this->buildWechatChoiceGroupWxml('checkbox', $fieldKey);
-                return "<view style=\"{$wrapperStyle}\">{$labelWxml}<checkbox-group class=\"{$class}\" style=\"{$style}\" data-field-key=\"{$fieldKey}\" data-field-type=\"checkbox-group\" bindchange=\"handleChoiceChange\">{$optionsWxml}</checkbox-group></view>\n";
+                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<checkbox-group class=\"{$class}\" style=\"{$style}\" data-field-key=\"{$fieldKey}\" data-field-type=\"checkbox-group\" bindchange=\"handleChoiceChange\">{$optionsWxml}</checkbox-group></view>\n";
+                break;
 
             case 'spacer':
                 $height = $props['height'] ?? '32px';
                 $class = $props['class'] ?? '';
                 $style = $props['style'] ?? '';
-                return "<view class=\"{$class}\" style=\"height:{$height};{$style}\"></view>\n";
+                $wxml = "<view class=\"{$class}\" style=\"height:{$height};{$style}\"></view>\n";
+                break;
                 
             default:
-                return "<!-- 未知元素类型: {$type} -->\n";
+                $wxml = "<!-- 未知元素类型: {$type} -->\n";
+                break;
         }
+
+        return $this->wrapVisibilityWxml($wxml, $element, $props);
     }
     
     private function generateElementWxss($element)
@@ -668,6 +762,7 @@ page {
                     'options' => in_array($type, ['select', 'radio-group', 'checkbox-group'], true)
                         ? $this->parseChoiceOptions($props['options'] ?? '')
                         : [],
+                    'visibilityKey' => $this->resolveVisibilityKey($element),
                 ];
             }
 
@@ -781,6 +876,99 @@ page {
         }
 
         return $checkedMap;
+    }
+
+    private function extractVisibilityRules(array $elements): array
+    {
+        $rules = [];
+
+        foreach ($elements as $element) {
+            $props = $element['props'] ?? [];
+
+            if (!empty($props['conditionEnabled']) && !empty($props['conditionFieldKey'])) {
+                $rules[$this->resolveVisibilityKey($element)] = [
+                    'fieldKey' => (string) ($props['conditionFieldKey'] ?? ''),
+                    'operator' => (string) ($props['conditionOperator'] ?? 'equals'),
+                    'value' => (string) ($props['conditionValue'] ?? ''),
+                ];
+            }
+
+            if (!empty($element['children']) && is_array($element['children'])) {
+                $rules = array_merge($rules, $this->extractVisibilityRules($element['children']));
+            }
+        }
+
+        return $rules;
+    }
+
+    private function buildInitialVisibilityState(array $rules, array $formValues): array
+    {
+        $state = [];
+
+        foreach ($rules as $key => $rule) {
+            $fieldKey = (string) ($rule['fieldKey'] ?? '');
+            $operator = (string) ($rule['operator'] ?? 'equals');
+            $expectedValue = (string) ($rule['value'] ?? '');
+            $state[$key] = $fieldKey === ''
+                ? true
+                : $this->evaluateVisibilityRule($formValues[$fieldKey] ?? '', $operator, $expectedValue);
+        }
+
+        return $state;
+    }
+
+    private function evaluateVisibilityRule($actualValue, string $operator, string $expectedValue): bool
+    {
+        if (is_array($actualValue)) {
+            $normalizedActual = array_values(array_filter(array_map(static fn ($item) => trim((string) $item), $actualValue), static fn ($item) => $item !== ''));
+        } else {
+            $normalizedActual = trim((string) $actualValue);
+        }
+
+        $normalizedExpected = trim((string) $expectedValue);
+
+        if ($operator === 'filled') {
+            return is_array($normalizedActual) ? count($normalizedActual) > 0 : $normalizedActual !== '';
+        }
+
+        if ($operator === 'empty') {
+            return is_array($normalizedActual) ? count($normalizedActual) === 0 : $normalizedActual === '';
+        }
+
+        if (is_array($normalizedActual)) {
+            $included = in_array($normalizedExpected, $normalizedActual, true);
+            return $operator === 'not_contains' ? !$included : $included;
+        }
+
+        if ($operator === 'contains') {
+            return $normalizedExpected !== '' && strpos($normalizedActual, $normalizedExpected) !== false;
+        }
+
+        if ($operator === 'not_contains') {
+            return $normalizedExpected === '' ? true : strpos($normalizedActual, $normalizedExpected) === false;
+        }
+
+        if ($operator === 'not_equals') {
+            return $normalizedActual !== $normalizedExpected;
+        }
+
+        return $normalizedActual === $normalizedExpected;
+    }
+
+    private function resolveVisibilityKey(array $element): string
+    {
+        $base = (string) ($element['id'] ?? uniqid('visibility_', false));
+        return 'visible_' . preg_replace('/[^\w]+/', '_', $base);
+    }
+
+    private function wrapVisibilityWxml(string $wxml, array $element, array $props): string
+    {
+        if (empty($props['conditionEnabled']) || empty($props['conditionFieldKey'])) {
+            return $wxml;
+        }
+
+        $visibilityKey = $this->resolveVisibilityKey($element);
+        return "<block wx:if=\"{{visibilityState['{$visibilityKey}'] !== false}}\">\n{$wxml}</block>\n";
     }
 
     private function resolveTheme(array $theme): array
