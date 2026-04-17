@@ -14,7 +14,7 @@
     <script src="vendor/vue/vue.global.prod.js"></script>
 </head>
 <body>
-    <div id="app" class="builder-container">
+        <div id="app" class="builder-container">
         <div class="toolbar">
             <div class="container-fluid toolbar-inner">
                 <div class="toolbar-copy">
@@ -107,6 +107,59 @@
                             </select>
                         </div>
 
+                        <div class="theme-panel">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label mb-0">项目主题</label>
+                                <span class="status-pill">导出与预览生效</span>
+                            </div>
+
+                            <div class="shortcut-grid shortcut-grid-tight mb-3">
+                                <button
+                                    v-for="preset in themePresets"
+                                    :key="preset.key"
+                                    type="button"
+                                    class="btn btn-outline-secondary btn-sm"
+                                    @click="applyThemePreset(preset.key)"
+                                >
+                                    {{ preset.name }}
+                                </button>
+                            </div>
+
+                            <div class="theme-color-grid">
+                                <label class="theme-color-item">
+                                    <span>主色</span>
+                                    <input v-model="theme.primary" type="color" @input="queueHistoryCapture">
+                                </label>
+                                <label class="theme-color-item">
+                                    <span>强调色</span>
+                                    <input v-model="theme.accent" type="color" @input="queueHistoryCapture">
+                                </label>
+                                <label class="theme-color-item">
+                                    <span>页面底色</span>
+                                    <input v-model="theme.pageBackground" type="color" @input="queueHistoryCapture">
+                                </label>
+                                <label class="theme-color-item">
+                                    <span>卡片底色</span>
+                                    <input v-model="theme.surface" type="color" @input="queueHistoryCapture">
+                                </label>
+                                <label class="theme-color-item">
+                                    <span>文字色</span>
+                                    <input v-model="theme.text" type="color" @input="queueHistoryCapture">
+                                </label>
+                            </div>
+
+                            <div class="mt-3">
+                                <label class="form-label">圆角尺寸</label>
+                                <input
+                                    v-model.trim="theme.radius"
+                                    type="text"
+                                    class="form-control"
+                                    placeholder="例如：18px"
+                                    @input="queueHistoryCapture"
+                                >
+                            </div>
+                        </div>
+
                         <div class="d-grid gap-2">
                             <button @click="saveProject" class="btn btn-primary btn-sm" :disabled="isSavingProject">
                                 <span v-if="isSavingProject" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
@@ -137,6 +190,39 @@
                             accept="application/json,.json"
                             @change="importProjectFile"
                         >
+                    </div>
+
+                    <div class="panel-section">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="section-title mb-0">本地草稿</h6>
+                            <span class="status-pill" v-if="draftInfo">{{ formatDateTime(draftInfo.savedAt) }}</span>
+                        </div>
+
+                        <p class="section-desc mb-3">编辑内容会自动保存在当前浏览器，适合保存未正式提交的搭建进度。</p>
+
+                        <div v-if="draftInfo" class="draft-card mb-3">
+                            <strong>{{ draftInfo.projectName }}</strong>
+                            <span>最近保存：{{ formatDateTime(draftInfo.savedAt) }}</span>
+                        </div>
+
+                        <div v-else class="saved-empty-state mb-3">
+                            还没有本地草稿，开始编辑后会自动生成。
+                        </div>
+
+                        <div class="draft-actions">
+                            <button @click="saveLocalDraft(false)" type="button" class="btn btn-outline-secondary btn-sm">
+                                <i class="bi bi-device-hdd"></i>
+                                立即存草稿
+                            </button>
+                            <button @click="restoreLocalDraft" type="button" class="btn btn-outline-primary btn-sm" :disabled="!draftInfo">
+                                <i class="bi bi-arrow-repeat"></i>
+                                恢复草稿
+                            </button>
+                            <button @click="clearLocalDraft" type="button" class="btn btn-outline-danger btn-sm" :disabled="!draftInfo">
+                                <i class="bi bi-trash3"></i>
+                                清空草稿
+                            </button>
+                        </div>
                     </div>
 
                     <div class="panel-section">
@@ -192,6 +278,31 @@
                                 <span>{{ component.name }}</span>
                             </div>
                             <small>{{ component.description }}</small>
+                        </div>
+                    </div>
+
+                    <div class="panel-section">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="section-title mb-0">区块模板</h6>
+                            <span class="status-pill">{{ sectionTemplates.length }} 套</span>
+                        </div>
+                        <p class="section-desc mb-3">一键插入常用页面区块，会自动生成成组结构，适合在空白页快速起稿。</p>
+
+                        <div class="template-library">
+                            <button
+                                v-for="template in sectionTemplates"
+                                :key="template.key"
+                                type="button"
+                                class="template-card"
+                                @click="insertSectionTemplate(template.key)"
+                            >
+                                <div class="template-card-head">
+                                    <i :class="template.icon"></i>
+                                    <span>{{ template.name }}</span>
+                                </div>
+                                <p>{{ template.description }}</p>
+                                <small>插入到当前页面，或插入到已选中的容器组件里。</small>
+                            </button>
                         </div>
                     </div>
 
@@ -325,7 +436,12 @@
                             <div v-if="currentPageElements.length === 0" class="canvas-empty-state">
                                 <i class="bi bi-inboxes display-5"></i>
                                 <h5>从左侧拖拽组件开始构建</h5>
-                                <p>现在支持表单组件、项目导入导出、历史撤销重做、跨容器拖拽移动和 ZIP 导出。</p>
+                                <p>现在支持表单组件、模板区块、项目导入导出、历史撤销重做、跨容器拖拽移动和 ZIP 导出。</p>
+                                <div class="empty-template-actions">
+                                    <button @click.stop="insertSectionTemplate('hero')" type="button" class="btn btn-success btn-sm">插入 Hero</button>
+                                    <button @click.stop="insertSectionTemplate('features')" type="button" class="btn btn-outline-secondary btn-sm">插入功能卡片</button>
+                                    <button @click.stop="insertSectionTemplate('contact')" type="button" class="btn btn-outline-secondary btn-sm">插入表单区块</button>
+                                </div>
                             </div>
 
                             <component-renderer
@@ -375,6 +491,31 @@
                         <div class="form-text">用于生成代码的文件名和路由，建议使用英文、数字和连字符。</div>
                     </div>
 
+                    <div class="panel-section">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="section-title mb-0">页面结构</h6>
+                            <span class="status-pill">{{ pageOutlineItems.length }} 项</span>
+                        </div>
+
+                        <div v-if="pageOutlineItems.length === 0" class="saved-empty-state">
+                            当前页面还没有组件，可以先插入模板区块，或从左侧组件库开始拖拽。
+                        </div>
+
+                        <div v-else class="outline-list">
+                            <button
+                                v-for="item in pageOutlineItems"
+                                :key="item.id"
+                                type="button"
+                                :class="['outline-item', { active: String(selectedElementId) === String(item.id) }]"
+                                :style="{ '--outline-depth': item.depth }"
+                                @click="focusElement(item.id)"
+                            >
+                                <span class="outline-item-label">{{ item.label }}</span>
+                                <small>{{ item.summary }}</small>
+                            </button>
+                        </div>
+                    </div>
+
                     <div v-if="selectedElement" class="panel-section">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h6 class="section-title mb-0">组件属性</h6>
@@ -389,6 +530,20 @@
                             <input type="text" class="form-control" :value="elementLabels[selectedElement.type] || selectedElement.type" readonly>
                         </div>
 
+                        <div v-if="selectedTemplateFields.length > 0" class="property-shortcuts">
+                            <label class="form-label">模板内容快编</label>
+                            <div class="form-text mb-3">当前选中的组件属于模板区块，可以直接在这里改写核心文案。</div>
+                            <div v-for="field in selectedTemplateFields" :key="field.key" class="mb-3">
+                                <label class="form-label">{{ field.label }}</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    :value="field.value"
+                                    @input="updateTemplateField(field.key, $event.target.value)"
+                                >
+                            </div>
+                        </div>
+
                         <div v-if="selectedElementType === 'button'" class="property-shortcuts">
                             <label class="form-label">按钮快捷样式</label>
                             <div class="shortcut-grid">
@@ -400,6 +555,58 @@
                             <div class="shortcut-grid shortcut-grid-tight mt-2">
                                 <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyWidthPreset('')">自动宽度</button>
                                 <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyWidthPreset('100%')">整行按钮</button>
+                            </div>
+                            <label class="form-label mt-3">按钮动作</label>
+                            <div class="shortcut-grid">
+                                <button
+                                    v-for="option in buttonActionOptions"
+                                    :key="option.value"
+                                    type="button"
+                                    :class="['btn btn-sm', selectedButtonActionType === option.value ? 'btn-success' : 'btn-outline-secondary']"
+                                    @click="applyButtonActionPreset(option.value)"
+                                >
+                                    {{ option.label }}
+                                </button>
+                            </div>
+                            <div class="mt-3">
+                                <label class="form-label">动作内容</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    :disabled="selectedButtonActionType === 'none'"
+                                    :placeholder="getButtonActionPlaceholder(selectedButtonActionType)"
+                                    :value="selectedElement.props.actionValue || ''"
+                                    @input="updateElementProp('actionValue', $event.target.value)"
+                                >
+                                <div class="form-text">提示消息会在 H5 中弹窗，在微信小程序代码中生成提示；跳转链接会生成对应跳转逻辑。</div>
+                            </div>
+                            <div v-if="selectedButtonActionType === 'submit'" class="mt-3">
+                                <label class="form-label">提交结果</label>
+                                <div class="shortcut-grid">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="applySubmitResultPreset('keep')">保留表单</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="applySubmitResultPreset('reset')">提交后清空</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="applySubmitResultPreset('redirect')">提交后跳转</button>
+                                </div>
+                                <div class="form-check form-switch builder-switch mt-3">
+                                    <input
+                                        class="form-check-input"
+                                        type="checkbox"
+                                        :checked="Boolean(selectedElement.props.submitResetForm)"
+                                        @change="updateElementProp('submitResetForm', $event.target.checked, { control: 'checkbox' })"
+                                    >
+                                    <label class="form-check-label">提交成功后清空当前页面表单</label>
+                                </div>
+                                <div class="mt-3">
+                                    <label class="form-label">提交后跳转</label>
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        :placeholder="projectType === 'wechat' ? '/pages/result/result' : 'https://example.com/success'"
+                                        :value="selectedElement.props.submitRedirectUrl || ''"
+                                        @input="updateElementProp('submitRedirectUrl', $event.target.value)"
+                                    >
+                                    <div class="form-text">H5 可填写外链或站内地址，微信小程序建议填写页面路径。</div>
+                                </div>
                             </div>
                         </div>
 
@@ -416,13 +623,64 @@
                             </div>
                         </div>
 
-                        <div v-if="selectedElementType === 'input' || selectedElementType === 'textarea'" class="property-shortcuts">
+                        <div v-if="['input', 'textarea', 'select', 'radio-group', 'checkbox-group'].includes(selectedElementType)" class="property-shortcuts">
                             <label class="form-label">表单快捷配置</label>
                             <div class="shortcut-grid">
                                 <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyFieldPreset('form-control')">标准输入</button>
                                 <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyFieldPreset('form-control form-control-sm')">紧凑输入</button>
                                 <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyWidthPreset('50%')">半宽</button>
                                 <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyWidthPreset('100%')">整行</button>
+                            </div>
+                            <div v-if="selectedElementType === 'input'" class="mt-3">
+                                <label class="form-label">字段类型</label>
+                                <div class="shortcut-grid">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyFieldTypePreset('text')">文本</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyFieldTypePreset('tel')">手机号</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyFieldTypePreset('email')">邮箱</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyFieldTypePreset('number')">数字</button>
+                                </div>
+                            </div>
+                            <div v-if="selectedElementType === 'radio-group' || selectedElementType === 'checkbox-group'" class="mt-3">
+                                <label class="form-label">选项排布</label>
+                                <div class="shortcut-grid">
+                                    <button
+                                        type="button"
+                                        :class="['btn btn-sm', selectedOptionLayout === 'vertical' ? 'btn-success' : 'btn-outline-secondary']"
+                                        @click="applyChoiceLayoutPreset('vertical')"
+                                    >
+                                        纵向
+                                    </button>
+                                    <button
+                                        type="button"
+                                        :class="['btn btn-sm', selectedOptionLayout === 'horizontal' ? 'btn-success' : 'btn-outline-secondary']"
+                                        @click="applyChoiceLayoutPreset('horizontal')"
+                                    >
+                                        横向
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-if="selectedElementType === 'select' || selectedElementType === 'radio-group' || selectedElementType === 'checkbox-group'" class="mt-3">
+                                <label class="form-label">选项预设</label>
+                                <div class="shortcut-grid">
+                                    <button
+                                        v-for="preset in choiceOptionPresets"
+                                        :key="preset.key"
+                                        type="button"
+                                        class="btn btn-outline-secondary btn-sm"
+                                        @click="applyChoiceOptionsPreset(preset.key)"
+                                    >
+                                        {{ preset.label }}
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-if="selectedElementType === 'input' || selectedElementType === 'textarea'" class="mt-3">
+                                <label class="form-label">校验预设</label>
+                                <div class="shortcut-grid">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyValidationPreset('none')">清空校验</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyValidationPreset('phone')">手机号</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyValidationPreset('email')">邮箱</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyValidationPreset('number')">数字</button>
+                                </div>
                             </div>
                         </div>
 
@@ -474,6 +732,16 @@
                                     @change="updateElementProp(field.key, $event.target.checked, field)"
                                 >
                             </div>
+                            <select
+                                v-else-if="field.control === 'select'"
+                                class="form-select"
+                                :value="selectedElement.props[field.key]"
+                                @change="updateElementProp(field.key, $event.target.value, field)"
+                            >
+                                <option v-for="option in field.options" :key="option.value" :value="option.value">
+                                    {{ option.label }}
+                                </option>
+                            </select>
                             <input
                                 v-else
                                 :type="field.type"
@@ -481,6 +749,12 @@
                                 :value="selectedElement.props[field.key]"
                                 @input="updateElementProp(field.key, $event.target.value, field)"
                             >
+                            <div v-if="field.key === 'options'" class="form-text">
+                                每行一个选项，格式为 `value|标签`，例如：`pro|进阶版`
+                            </div>
+                            <div v-if="field.key === 'value' && selectedElementType === 'checkbox-group'" class="form-text">
+                                多选组默认值可填写多个 value，并用英文逗号分隔。
+                            </div>
                         </div>
                     </div>
 
@@ -519,7 +793,7 @@
                     </div>
                     <div class="modal-body">
                         <div :class="['preview-shell', `preview-shell-${viewportMode}`]">
-                            <div class="preview-stage" v-html="previewHtml"></div>
+                            <div class="preview-stage" :style="projectThemeStyle" v-html="previewHtml"></div>
                         </div>
                         <div v-if="!hasPreview" class="text-muted small mt-3">暂无内容，请先在画布中添加组件。</div>
                     </div>

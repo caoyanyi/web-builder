@@ -1,10 +1,500 @@
 const { createApp } = Vue;
 
 const CONTAINER_TYPES = ['div', 'row'];
-const PROP_ORDER = ['content', 'text', 'label', 'required', 'placeholder', 'value', 'rows', 'height', 'src', 'alt', 'class', 'width', 'style'];
+const PROP_ORDER = ['content', 'text', 'label', 'required', 'placeholder', 'value', 'rows', 'fieldKey', 'inputType', 'options', 'optionLayout', 'validationPattern', 'validationMessage', 'height', 'src', 'alt', 'class', 'width', 'style', 'actionType', 'actionValue', 'submitResetForm', 'submitRedirectUrl'];
 const HISTORY_LIMIT = 60;
 const DRAG_KIND_COMPONENT = 'component';
 const DRAG_KIND_ELEMENT = 'existing-element';
+const LOCAL_DRAFT_STORAGE_KEY = 'web-builder-local-draft-v1';
+const INTERNAL_PROP_KEYS = new Set(['templateKey', 'templateName']);
+const BUTTON_ACTION_OPTIONS = [
+    { value: 'none', label: '无动作' },
+    { value: 'message', label: '提示消息' },
+    { value: 'link', label: '跳转链接' },
+    { value: 'submit', label: '提交表单' }
+];
+const INPUT_TYPE_OPTIONS = [
+    { value: 'text', label: '文本' },
+    { value: 'tel', label: '手机号' },
+    { value: 'email', label: '邮箱' },
+    { value: 'number', label: '数字' }
+];
+const OPTION_LAYOUT_OPTIONS = [
+    { value: 'vertical', label: '纵向排列' },
+    { value: 'horizontal', label: '横向排列' }
+];
+const CHOICE_OPTION_PRESETS = [
+    {
+        key: 'basic',
+        label: '基础三项',
+        options: 'option_a|选项一\noption_b|选项二\noption_c|选项三',
+        value: ''
+    },
+    {
+        key: 'yes_no',
+        label: '是否选择',
+        options: 'yes|是\nno|否',
+        value: ''
+    },
+    {
+        key: 'appointment',
+        label: '预约时段',
+        options: 'morning|上午\nafternoon|下午\nevening|晚上',
+        value: ''
+    },
+    {
+        key: 'package',
+        label: '套餐方案',
+        options: 'basic|基础版\npro|进阶版\nenterprise|企业版',
+        value: 'pro'
+    }
+];
+const THEME_PRESETS = {
+    forest: {
+        name: '森绿',
+        theme: {
+            primary: '#0f766e',
+            accent: '#f59e0b',
+            surface: '#ffffff',
+            pageBackground: '#f4f7f2',
+            text: '#16302b',
+            radius: '18px'
+        }
+    },
+    ocean: {
+        name: '海蓝',
+        theme: {
+            primary: '#0369a1',
+            accent: '#fb7185',
+            surface: '#ffffff',
+            pageBackground: '#eff6ff',
+            text: '#0f172a',
+            radius: '20px'
+        }
+    },
+    sunset: {
+        name: '暖橙',
+        theme: {
+            primary: '#ea580c',
+            accent: '#b45309',
+            surface: '#fffaf5',
+            pageBackground: '#fff7ed',
+            text: '#431407',
+            radius: '22px'
+        }
+    }
+};
+const SECTION_TEMPLATES = [
+    {
+        key: 'hero',
+        name: 'Hero 首屏',
+        icon: 'bi bi-stars',
+        description: '标题、说明和双按钮组合，适合首页开场。',
+        build() {
+            return [
+                {
+                    type: 'div',
+                    props: {
+                        templateKey: 'hero',
+                        templateName: 'Hero 首屏',
+                        class: '',
+                        width: '',
+                        style: 'padding: 32px; border-radius: 24px; background: linear-gradient(135deg, #0f766e 0%, #155e75 100%); color: #ffffff;'
+                    },
+                    children: [
+                        {
+                            type: 'text',
+                            props: {
+                                content: '夏季新品发布',
+                                class: '',
+                                width: '',
+                                style: 'font-size: 38px; font-weight: 700; line-height: 1.2; margin-bottom: 12px;'
+                            },
+                            children: []
+                        },
+                        {
+                            type: 'text',
+                            props: {
+                                content: '用更快的方式搭出活动页、专题页和表单页，先把页面结构铺出来，再继续精修内容和样式。',
+                                class: '',
+                                width: '',
+                                style: 'font-size: 16px; line-height: 1.8; opacity: 0.9; margin-bottom: 20px; max-width: 680px;'
+                            },
+                            children: []
+                        },
+                        {
+                            type: 'row',
+                            props: {
+                                class: '',
+                                width: '',
+                                style: 'gap: 12px; align-items: center;'
+                            },
+                            children: [
+                                {
+                                    type: 'button',
+                                    props: {
+                                        text: '立即体验',
+                                        class: 'btn btn-light',
+                                        width: '',
+                                        style: 'color: #0f766e; font-weight: 600;'
+                                    },
+                                    children: []
+                                },
+                                {
+                                    type: 'button',
+                                    props: {
+                                        text: '查看详情',
+                                        class: 'btn btn-outline-light',
+                                        width: '',
+                                        style: 'font-weight: 600;'
+                                    },
+                                    children: []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ];
+        }
+    },
+    {
+        key: 'features',
+        name: '功能卡片',
+        icon: 'bi bi-columns-gap',
+        description: '快速插入三列能力介绍区，适合卖点展示。',
+        build() {
+            return [
+                {
+                    type: 'div',
+                    props: {
+                        templateKey: 'features',
+                        templateName: '功能卡片',
+                        class: '',
+                        width: '',
+                        style: 'padding: 28px; border-radius: 24px; background: #ffffff; border: 1px solid #d7e2d6;'
+                    },
+                    children: [
+                        {
+                            type: 'text',
+                            props: {
+                                content: '为什么选择这套方案',
+                                class: '',
+                                width: '',
+                                style: 'font-size: 28px; font-weight: 700; line-height: 1.3; margin-bottom: 10px;'
+                            },
+                            children: []
+                        },
+                        {
+                            type: 'text',
+                            props: {
+                                content: '把核心优势拆成更容易阅读的卡片，既方便编辑，也方便后续继续扩展。',
+                                class: '',
+                                width: '',
+                                style: 'font-size: 15px; line-height: 1.8; color: #4b635c; margin-bottom: 18px;'
+                            },
+                            children: []
+                        },
+                        {
+                            type: 'row',
+                            props: {
+                                class: '',
+                                width: '',
+                                style: 'gap: 16px; align-items: stretch;'
+                            },
+                            children: [
+                                {
+                                    type: 'div',
+                                    props: {
+                                        class: '',
+                                        width: 'calc(33.333% - 11px)',
+                                        style: 'padding: 20px; border-radius: 18px; background: #f8fbf7;'
+                                    },
+                                    children: [
+                                        {
+                                            type: 'text',
+                                            props: {
+                                                content: '搭建效率更高',
+                                                class: '',
+                                                width: '',
+                                                style: 'font-size: 18px; font-weight: 700; margin-bottom: 8px;'
+                                            },
+                                            children: []
+                                        },
+                                        {
+                                            type: 'text',
+                                            props: {
+                                                content: '通过拖拽和模板组合，先完成页面骨架，再补充品牌细节。',
+                                                class: '',
+                                                width: '',
+                                                style: 'font-size: 14px; line-height: 1.8; color: #60756f;'
+                                            },
+                                            children: []
+                                        }
+                                    ]
+                                },
+                                {
+                                    type: 'div',
+                                    props: {
+                                        class: '',
+                                        width: 'calc(33.333% - 11px)',
+                                        style: 'padding: 20px; border-radius: 18px; background: #f8fbf7;'
+                                    },
+                                    children: [
+                                        {
+                                            type: 'text',
+                                            props: {
+                                                content: '导出链路完整',
+                                                class: '',
+                                                width: '',
+                                                style: 'font-size: 18px; font-weight: 700; margin-bottom: 8px;'
+                                            },
+                                            children: []
+                                        },
+                                        {
+                                            type: 'text',
+                                            props: {
+                                                content: '同一份配置可以直接查看 H5 预览，并导出 H5 或微信小程序 ZIP。',
+                                                class: '',
+                                                width: '',
+                                                style: 'font-size: 14px; line-height: 1.8; color: #60756f;'
+                                            },
+                                            children: []
+                                        }
+                                    ]
+                                },
+                                {
+                                    type: 'div',
+                                    props: {
+                                        class: '',
+                                        width: 'calc(33.333% - 11px)',
+                                        style: 'padding: 20px; border-radius: 18px; background: #f8fbf7;'
+                                    },
+                                    children: [
+                                        {
+                                            type: 'text',
+                                            props: {
+                                                content: '适合继续扩展',
+                                                class: '',
+                                                width: '',
+                                                style: 'font-size: 18px; font-weight: 700; margin-bottom: 8px;'
+                                            },
+                                            children: []
+                                        },
+                                        {
+                                            type: 'text',
+                                            props: {
+                                                content: '后续可以继续叠加模板库、组件库、事件和数据能力，逐步走向低代码工具。',
+                                                class: '',
+                                                width: '',
+                                                style: 'font-size: 14px; line-height: 1.8; color: #60756f;'
+                                            },
+                                            children: []
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ];
+        }
+    },
+    {
+        key: 'cta',
+        name: '转化横幅',
+        icon: 'bi bi-megaphone',
+        description: '适合活动报名、产品试用和下载引导。',
+        build() {
+            return [
+                {
+                    type: 'row',
+                    props: {
+                        templateKey: 'cta',
+                        templateName: '转化横幅',
+                        class: '',
+                        width: '',
+                        style: 'gap: 20px; align-items: center; padding: 24px 28px; border-radius: 22px; background: linear-gradient(180deg, #f8fbf7 0%, #ffffff 100%); border: 1px solid #d7e2d6;'
+                    },
+                    children: [
+                        {
+                            type: 'div',
+                            props: {
+                                class: '',
+                                width: 'calc(100% - 180px)',
+                                style: ''
+                            },
+                            children: [
+                                {
+                                    type: 'text',
+                                    props: {
+                                        content: '把搭建完成的页面直接投入下一步验证',
+                                        class: '',
+                                        width: '',
+                                        style: 'font-size: 24px; font-weight: 700; margin-bottom: 8px;'
+                                    },
+                                    children: []
+                                },
+                                {
+                                    type: 'text',
+                                    props: {
+                                        content: '支持一键预览、生成代码、导出 ZIP，也保留了后续继续人工精修的空间。',
+                                        class: '',
+                                        width: '',
+                                        style: 'font-size: 15px; line-height: 1.8; color: #60756f;'
+                                    },
+                                    children: []
+                                }
+                            ]
+                        },
+                        {
+                            type: 'button',
+                            props: {
+                                text: '开始试用',
+                                class: 'btn btn-success',
+                                width: '160px',
+                                style: 'font-weight: 600;'
+                            },
+                            children: []
+                        }
+                    ]
+                }
+            ];
+        }
+    },
+    {
+        key: 'contact',
+        name: '表单区块',
+        icon: 'bi bi-ui-checks-grid',
+        description: '包含标题、输入框、文本域和提交按钮，适合报名或收集线索。',
+        build() {
+            return [
+                {
+                    type: 'div',
+                    props: {
+                        templateKey: 'contact',
+                        templateName: '表单区块',
+                        class: '',
+                        width: '',
+                        style: 'padding: 28px; border-radius: 24px; background: #ffffff; border: 1px solid #d7e2d6;'
+                    },
+                    children: [
+                        {
+                            type: 'text',
+                            props: {
+                                content: '预约咨询',
+                                class: '',
+                                width: '',
+                                style: 'font-size: 28px; font-weight: 700; margin-bottom: 10px;'
+                            },
+                            children: []
+                        },
+                        {
+                            type: 'text',
+                            props: {
+                                content: '留下你的联系方式和需求，我们会尽快与你取得联系。',
+                                class: '',
+                                width: '',
+                                style: 'font-size: 15px; line-height: 1.8; color: #60756f; margin-bottom: 18px;'
+                            },
+                            children: []
+                        },
+                        {
+                            type: 'row',
+                            props: {
+                                class: '',
+                                width: '',
+                                style: 'gap: 16px; align-items: flex-start;'
+                            },
+                            children: [
+                                {
+                                    type: 'input',
+                                    props: {
+                                        label: '联系人',
+                                        required: true,
+                                        placeholder: '请输入姓名',
+                                        value: '',
+                                        class: 'form-control',
+                                        width: 'calc(50% - 8px)',
+                                        style: ''
+                                    },
+                                    children: []
+                                },
+                                {
+                                    type: 'input',
+                                    props: {
+                                        label: '联系电话',
+                                        required: true,
+                                        placeholder: '请输入手机号',
+                                        value: '',
+                                        class: 'form-control',
+                                        width: 'calc(50% - 8px)',
+                                        style: ''
+                                    },
+                                    children: []
+                                }
+                            ]
+                        },
+                        {
+                            type: 'textarea',
+                            props: {
+                                label: '需求说明',
+                                required: false,
+                                placeholder: '请描述你的业务场景或页面诉求',
+                                value: '',
+                                rows: '5',
+                                class: 'form-control',
+                                width: '100%',
+                                style: 'margin-top: 16px;'
+                            },
+                            children: []
+                        },
+                        {
+                            type: 'button',
+                            props: {
+                                text: '提交预约',
+                                class: 'btn btn-primary',
+                                width: '',
+                                style: 'margin-top: 18px;'
+                            },
+                            children: []
+                        }
+                    ]
+                }
+            ];
+        }
+    }
+];
+const TEMPLATE_FIELD_CONFIGS = {
+    hero: [
+        { key: 'hero_title', label: '主标题', path: [0], propKey: 'content' },
+        { key: 'hero_description', label: '说明文案', path: [1], propKey: 'content' },
+        { key: 'hero_primary_button', label: '主按钮文案', path: [2, 0], propKey: 'text' },
+        { key: 'hero_secondary_button', label: '次按钮文案', path: [2, 1], propKey: 'text' }
+    ],
+    features: [
+        { key: 'features_title', label: '区块标题', path: [0], propKey: 'content' },
+        { key: 'features_description', label: '区块说明', path: [1], propKey: 'content' },
+        { key: 'features_card_1_title', label: '卡片 1 标题', path: [2, 0, 0], propKey: 'content' },
+        { key: 'features_card_1_desc', label: '卡片 1 说明', path: [2, 0, 1], propKey: 'content' },
+        { key: 'features_card_2_title', label: '卡片 2 标题', path: [2, 1, 0], propKey: 'content' },
+        { key: 'features_card_2_desc', label: '卡片 2 说明', path: [2, 1, 1], propKey: 'content' },
+        { key: 'features_card_3_title', label: '卡片 3 标题', path: [2, 2, 0], propKey: 'content' },
+        { key: 'features_card_3_desc', label: '卡片 3 说明', path: [2, 2, 1], propKey: 'content' }
+    ],
+    cta: [
+        { key: 'cta_title', label: '标题', path: [0, 0], propKey: 'content' },
+        { key: 'cta_description', label: '说明文案', path: [0, 1], propKey: 'content' },
+        { key: 'cta_button_text', label: '按钮文案', path: [1], propKey: 'text' }
+    ],
+    contact: [
+        { key: 'contact_title', label: '区块标题', path: [0], propKey: 'content' },
+        { key: 'contact_description', label: '区块说明', path: [1], propKey: 'content' },
+        { key: 'contact_name_label', label: '姓名字段标题', path: [2, 0], propKey: 'label' },
+        { key: 'contact_phone_label', label: '电话字段标题', path: [2, 1], propKey: 'label' },
+        { key: 'contact_textarea_label', label: '说明字段标题', path: [3], propKey: 'label' },
+        { key: 'contact_button_text', label: '提交按钮文案', path: [4], propKey: 'text' }
+    ]
+};
 
 function createId(prefix = 'node') {
     return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -12,6 +502,36 @@ function createId(prefix = 'node') {
 
 function deepClone(value) {
     return JSON.parse(JSON.stringify(value));
+}
+
+function createDefaultTheme() {
+    return deepClone(THEME_PRESETS.forest.theme);
+}
+
+function parseChoiceOptions(rawOptions = '') {
+    return String(rawOptions || '')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line, index) => {
+            const segments = line.split('|');
+            const rawValue = segments[0];
+            const rawLabel = segments.slice(1).join('|');
+            const value = String(rawValue || `option_${index + 1}`).trim() || `option_${index + 1}`;
+            const label = String(rawLabel || rawValue || `选项 ${index + 1}`).trim() || value;
+
+            return {
+                value,
+                label
+            };
+        });
+}
+
+function parseChoiceValues(value) {
+    return String(value || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
 }
 
 function isContainerType(type) {
@@ -74,6 +594,9 @@ const ComponentRenderer = {
                 button: '按钮',
                 input: '输入框',
                 textarea: '文本域',
+                select: '下拉选择',
+                'radio-group': '单选组',
+                'checkbox-group': '多选组',
                 spacer: '间距块',
                 row: '行布局',
                 div: '容器'
@@ -88,6 +611,40 @@ const ComponentRenderer = {
             const style = props.style || '';
 
             return `${width}${height}${style}`;
+        },
+        buttonWrapperStyle() {
+            const props = this.element.props || {};
+            return props.width ? `width: ${props.width};` : '';
+        },
+        buttonInnerStyle() {
+            const props = this.element.props || {};
+            return props.style || '';
+        },
+        buttonActionSummary() {
+            const props = this.element.props || {};
+            const actionType = props.actionType || 'none';
+            const labels = {
+                message: '提示消息',
+                link: '跳转链接',
+                submit: '提交表单'
+            };
+
+            if (actionType === 'none') {
+                return '';
+            }
+
+            return props.actionValue
+                ? `${labels[actionType] || actionType}：${props.actionValue}`
+                : (labels[actionType] || actionType);
+        },
+        choiceOptions() {
+            return parseChoiceOptions(this.element.props && this.element.props.options);
+        },
+        choiceValues() {
+            return parseChoiceValues(this.element.props && this.element.props.value);
+        },
+        isHorizontalChoiceLayout() {
+            return (this.element.props && this.element.props.optionLayout) === 'horizontal';
         }
     },
     methods: {
@@ -159,6 +716,7 @@ const ComponentRenderer = {
     },
     template: `
         <div
+            :data-element-id="String(element.id)"
             :class="wrapperClasses"
             draggable="true"
             @click.stop="selectElement"
@@ -233,15 +791,23 @@ const ComponentRenderer = {
                 :style="elementStyle"
             >
 
-            <button
+            <div
                 v-else-if="element.type === 'button'"
-                type="button"
-                :class="element.props.class || 'btn btn-primary'"
-                :style="elementStyle"
-                @click.stop="selectElement"
+                class="builder-button-preview"
+                :style="buttonWrapperStyle"
             >
-                {{ element.props.text || '按钮' }}
-            </button>
+                <button
+                    type="button"
+                    :class="element.props.class || 'btn btn-primary'"
+                    :style="buttonInnerStyle"
+                    @click.stop="selectElement"
+                >
+                    {{ element.props.text || '按钮' }}
+                </button>
+                <span v-if="buttonActionSummary" class="builder-action-hint">
+                    {{ buttonActionSummary }}
+                </span>
+            </div>
 
             <div v-else-if="element.type === 'input'" class="builder-field-group" :style="elementStyle">
                 <label v-if="element.props.label" class="builder-field-label">
@@ -249,7 +815,7 @@ const ComponentRenderer = {
                     <span v-if="element.props.required" class="builder-field-required">*</span>
                 </label>
                 <input
-                    type="text"
+                    :type="element.props.inputType || 'text'"
                     :class="['builder-render-field', element.props.class || 'form-control']"
                     :placeholder="element.props.placeholder || '请输入内容'"
                     :value="element.props.value || ''"
@@ -268,6 +834,67 @@ const ComponentRenderer = {
                     :placeholder="element.props.placeholder || '请输入多行内容'"
                     readonly
                 >{{ element.props.value || '' }}</textarea>
+            </div>
+
+            <div v-else-if="element.type === 'select'" class="builder-field-group" :style="elementStyle">
+                <label v-if="element.props.label" class="builder-field-label">
+                    {{ element.props.label }}
+                    <span v-if="element.props.required" class="builder-field-required">*</span>
+                </label>
+                <select
+                    :class="['builder-render-field', element.props.class || 'form-control']"
+                    :value="element.props.value || ''"
+                    disabled
+                >
+                    <option value="">{{ element.props.placeholder || '请选择' }}</option>
+                    <option
+                        v-for="option in choiceOptions"
+                        :key="option.value"
+                        :value="option.value"
+                    >
+                        {{ option.label }}
+                    </option>
+                </select>
+            </div>
+
+            <div v-else-if="element.type === 'radio-group'" class="builder-field-group" :style="elementStyle">
+                <label v-if="element.props.label" class="builder-field-label">
+                    {{ element.props.label }}
+                    <span v-if="element.props.required" class="builder-field-required">*</span>
+                </label>
+                <div :class="['builder-choice-list', { 'is-horizontal': isHorizontalChoiceLayout }]">
+                    <label v-for="option in choiceOptions" :key="option.value" class="builder-choice-item">
+                        <input
+                            type="radio"
+                            :checked="(element.props.value || '') === option.value"
+                            disabled
+                        >
+                        <span>{{ option.label }}</span>
+                    </label>
+                    <div v-if="choiceOptions.length === 0" class="builder-choice-empty">
+                        请先在右侧配置选项内容
+                    </div>
+                </div>
+            </div>
+
+            <div v-else-if="element.type === 'checkbox-group'" class="builder-field-group" :style="elementStyle">
+                <label v-if="element.props.label" class="builder-field-label">
+                    {{ element.props.label }}
+                    <span v-if="element.props.required" class="builder-field-required">*</span>
+                </label>
+                <div :class="['builder-choice-list', { 'is-horizontal': isHorizontalChoiceLayout }]">
+                    <label v-for="option in choiceOptions" :key="option.value" class="builder-choice-item">
+                        <input
+                            type="checkbox"
+                            :checked="choiceValues.includes(option.value)"
+                            disabled
+                        >
+                        <span>{{ option.label }}</span>
+                    </label>
+                    <div v-if="choiceOptions.length === 0" class="builder-choice-empty">
+                        请先在右侧配置选项内容
+                    </div>
+                </div>
             </div>
 
             <div
@@ -300,6 +927,7 @@ createApp({
             projectId: null,
             projectName: '未命名项目',
             projectType: 'h5',
+            theme: createDefaultTheme(),
             pages: [
                 {
                     id: firstPageId,
@@ -312,9 +940,11 @@ createApp({
             selectedElementId: null,
             newPageTitle: '',
             savedProjects: [],
+            draftInfo: null,
             historyStack: [],
             historyIndex: -1,
             historyTimer: null,
+            draftTimer: null,
             isApplyingHistory: false,
             viewportMode: 'desktop',
             activeDropTarget: null,
@@ -341,18 +971,38 @@ createApp({
             formComponents: [
                 { type: 'input', name: '输入框', icon: 'bi bi-input-cursor-text', description: '适合表单、搜索区和基础信息收集。' },
                 { type: 'textarea', name: '文本域', icon: 'bi bi-textarea-resize', description: '适合意见反馈、备注和长文本录入。' },
+                { type: 'select', name: '下拉选择', icon: 'bi bi-menu-button-wide', description: '适合行业、套餐、来源等单选场景。' },
+                { type: 'radio-group', name: '单选组', icon: 'bi bi-ui-radios', description: '适合性别、档位、意向等级等互斥选择。' },
+                { type: 'checkbox-group', name: '多选组', icon: 'bi bi-ui-checks', description: '适合兴趣标签、服务需求等多选收集。' },
                 { type: 'spacer', name: '间距块', icon: 'bi bi-arrows-expand-vertical', description: '快速拉开区块间距，调节页面节奏。' }
             ],
             layoutComponents: [
                 { type: 'row', name: '行布局', icon: 'bi bi-layout-three-columns', description: '横向排列多个组件，适合卡片组。' },
                 { type: 'div', name: '容器', icon: 'bi bi-square', description: '纵向包裹内容，适合做内容模块。' }
             ],
+            sectionTemplates: SECTION_TEMPLATES.map((template) => ({
+                key: template.key,
+                name: template.name,
+                icon: template.icon,
+                description: template.description
+            })),
+            buttonActionOptions: BUTTON_ACTION_OPTIONS,
+            inputTypeOptions: INPUT_TYPE_OPTIONS,
+            optionLayoutOptions: OPTION_LAYOUT_OPTIONS,
+            choiceOptionPresets: CHOICE_OPTION_PRESETS,
+            themePresets: Object.entries(THEME_PRESETS).map(([key, preset]) => ({
+                key,
+                name: preset.name
+            })),
             elementLabels: {
                 text: '文本',
                 image: '图片',
                 button: '按钮',
                 input: '输入框',
                 textarea: '文本域',
+                select: '下拉选择',
+                'radio-group': '单选组',
+                'checkbox-group': '多选组',
                 spacer: '间距块',
                 row: '行布局',
                 div: '容器'
@@ -368,9 +1018,19 @@ createApp({
                 placeholder: '占位提示',
                 value: '默认值',
                 rows: '可视行数',
+                fieldKey: '字段标识',
+                inputType: '字段类型',
+                options: '选项配置',
+                optionLayout: '选项排布',
+                validationPattern: '校验规则',
+                validationMessage: '校验提示',
                 width: '宽度',
                 height: '高度',
-                style: '内联样式'
+                style: '内联样式',
+                actionType: '按钮动作',
+                actionValue: '动作内容',
+                submitResetForm: '提交后清空',
+                submitRedirectUrl: '提交后跳转'
             },
             propInputTypes: {
                 src: 'text',
@@ -383,9 +1043,19 @@ createApp({
                 placeholder: 'text',
                 value: 'text',
                 rows: 'number',
+                fieldKey: 'text',
+                inputType: 'text',
+                options: 'text',
+                optionLayout: 'text',
+                validationPattern: 'text',
+                validationMessage: 'text',
                 content: 'text',
                 class: 'text',
-                style: 'text'
+                style: 'text',
+                actionType: 'text',
+                actionValue: 'text',
+                submitResetForm: 'checkbox',
+                submitRedirectUrl: 'text'
             }
         };
     },
@@ -423,6 +1093,19 @@ createApp({
         currentElementCount() {
             return this.currentPageElements.length;
         },
+        projectThemeStyle() {
+            return {
+                '--project-primary': this.theme.primary,
+                '--project-accent': this.theme.accent,
+                '--project-surface': this.theme.surface,
+                '--project-page-bg': this.theme.pageBackground,
+                '--project-text': this.theme.text,
+                '--project-radius': this.theme.radius
+            };
+        },
+        pageOutlineItems() {
+            return this.buildOutlineItems(this.currentPageElements);
+        },
         selectedElement() {
             if (!this.selectedElementId || !this.currentPage) {
                 return null;
@@ -430,18 +1113,61 @@ createApp({
 
             return this.findElementById(this.currentPageElements, this.selectedElementId);
         },
+        selectedTemplateRoot() {
+            if (!this.selectedElementId) {
+                return null;
+            }
+
+            return this.findTemplateRootForElement(this.currentPageElements, this.selectedElementId);
+        },
+        selectedTemplateFields() {
+            if (!this.selectedTemplateRoot) {
+                return [];
+            }
+
+            const templateKey = this.selectedTemplateRoot.props && this.selectedTemplateRoot.props.templateKey;
+            const fieldConfigs = TEMPLATE_FIELD_CONFIGS[templateKey] || [];
+
+            return fieldConfigs.map((field) => ({
+                ...field,
+                value: this.getTemplateFieldValue(this.selectedTemplateRoot, field)
+            }));
+        },
+        selectedButtonActionType() {
+            if (!this.selectedElement || this.selectedElement.type !== 'button') {
+                return 'none';
+            }
+
+            return this.selectedElement.props.actionType || 'none';
+        },
+        selectedInputType() {
+            if (!this.selectedElement || this.selectedElement.type !== 'input') {
+                return 'text';
+            }
+
+            return this.selectedElement.props.inputType || 'text';
+        },
+        selectedOptionLayout() {
+            if (!this.selectedElement || !['radio-group', 'checkbox-group'].includes(this.selectedElement.type)) {
+                return 'vertical';
+            }
+
+            return this.selectedElement.props.optionLayout || 'vertical';
+        },
         editablePropFields() {
             if (!this.selectedElement || !this.selectedElement.props) {
                 return [];
             }
 
-            const keys = Object.keys(this.selectedElement.props);
+            const keys = Object.keys(this.selectedElement.props).filter((key) => !INTERNAL_PROP_KEYS.has(key));
             const orderedKeys = [
                 ...PROP_ORDER.filter((key) => keys.includes(key)),
                 ...keys.filter((key) => !PROP_ORDER.includes(key))
             ];
-            const textareaKeys = new Set(['style']);
-            const checkboxKeys = new Set(['required']);
+            const textareaKeys = new Set(['style', 'options']);
+            const checkboxKeys = new Set(['required', 'submitResetForm']);
+            const hiddenKeys = new Set(['actionType', 'actionValue', 'submitRedirectUrl', 'submitResetForm']);
+            const selectKeys = new Set(['inputType', 'optionLayout']);
 
             if (this.selectedElement.type === 'text') {
                 textareaKeys.add('content');
@@ -454,9 +1180,14 @@ createApp({
             return orderedKeys.map((key) => ({
                 key,
                 label: this.formName[key] || key,
-                control: checkboxKeys.has(key) ? 'checkbox' : (textareaKeys.has(key) ? 'textarea' : 'input'),
-                type: this.propInputTypes[key] || 'text'
-            }));
+                control: checkboxKeys.has(key)
+                    ? 'checkbox'
+                    : (selectKeys.has(key) ? 'select' : (textareaKeys.has(key) ? 'textarea' : 'input')),
+                type: this.propInputTypes[key] || 'text',
+                options: key === 'inputType'
+                    ? this.inputTypeOptions
+                    : (key === 'optionLayout' ? this.optionLayoutOptions : [])
+            })).filter((field) => !hiddenKeys.has(field.key));
         },
         selectedElementType() {
             return this.selectedElement ? this.selectedElement.type : '';
@@ -471,8 +1202,29 @@ createApp({
     mounted() {
         this.fetchProjects(true);
         this.resetHistory();
+        this.refreshLocalDraftInfo();
         window.addEventListener('keydown', this.handleKeydown);
         window.addEventListener('dragend', this.clearDropTarget);
+
+        if (this.draftInfo) {
+            this.setStatus('发现本地草稿，可在左侧项目管理区域恢复。', 'info');
+        }
+    },
+    unmounted() {
+        window.removeEventListener('keydown', this.handleKeydown);
+        window.removeEventListener('dragend', this.clearDropTarget);
+
+        if (this.statusTimer) {
+            window.clearTimeout(this.statusTimer);
+        }
+
+        if (this.historyTimer) {
+            window.clearTimeout(this.historyTimer);
+        }
+
+        if (this.draftTimer) {
+            window.clearTimeout(this.draftTimer);
+        }
     },
     methods: {
         setStatus(message, variant = 'info') {
@@ -486,6 +1238,140 @@ createApp({
             this.statusTimer = window.setTimeout(() => {
                 this.statusMessage = '';
             }, 3200);
+        },
+        formatDateTime(value) {
+            if (!value) {
+                return '未知时间';
+            }
+
+            const date = new Date(value);
+
+            if (Number.isNaN(date.getTime())) {
+                return String(value);
+            }
+
+            return new Intl.DateTimeFormat('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            }).format(date);
+        },
+        normalizeTheme(theme = {}) {
+            const defaults = createDefaultTheme();
+
+            return {
+                primary: theme.primary || defaults.primary,
+                accent: theme.accent || defaults.accent,
+                surface: theme.surface || defaults.surface,
+                pageBackground: theme.pageBackground || defaults.pageBackground,
+                text: theme.text || defaults.text,
+                radius: theme.radius || defaults.radius
+            };
+        },
+        applyThemePreset(key) {
+            const preset = THEME_PRESETS[key];
+
+            if (!preset) {
+                this.setStatus('主题预设不存在。', 'danger');
+                return;
+            }
+
+            this.theme = deepClone(preset.theme);
+            this.captureHistory();
+            this.setStatus(`已应用${preset.name}主题。`, 'success');
+        },
+        queueDraftSave() {
+            if (this.draftTimer) {
+                window.clearTimeout(this.draftTimer);
+            }
+
+            this.draftTimer = window.setTimeout(() => {
+                this.draftTimer = null;
+                this.saveLocalDraft(true);
+            }, 500);
+        },
+        saveLocalDraft(silent = false) {
+            try {
+                const payload = {
+                    version: 1,
+                    savedAt: new Date().toISOString(),
+                    snapshot: this.snapshotState()
+                };
+
+                window.localStorage.setItem(LOCAL_DRAFT_STORAGE_KEY, JSON.stringify(payload));
+                this.draftInfo = {
+                    savedAt: payload.savedAt,
+                    projectName: payload.snapshot.projectName || '未命名项目'
+                };
+
+                if (!silent) {
+                    this.setStatus('本地草稿已保存。', 'success');
+                }
+            } catch (error) {
+                if (!silent) {
+                    this.setStatus('本地草稿保存失败。', 'danger');
+                }
+            }
+        },
+        refreshLocalDraftInfo() {
+            try {
+                const rawDraft = window.localStorage.getItem(LOCAL_DRAFT_STORAGE_KEY);
+
+                if (!rawDraft) {
+                    this.draftInfo = null;
+                    return;
+                }
+
+                const parsedDraft = JSON.parse(rawDraft);
+                const snapshot = parsedDraft && parsedDraft.snapshot ? parsedDraft.snapshot : null;
+
+                if (!snapshot) {
+                    this.draftInfo = null;
+                    return;
+                }
+
+                this.draftInfo = {
+                    savedAt: parsedDraft.savedAt || null,
+                    projectName: snapshot.projectName || '未命名项目'
+                };
+            } catch (error) {
+                this.draftInfo = null;
+            }
+        },
+        restoreLocalDraft() {
+            try {
+                const rawDraft = window.localStorage.getItem(LOCAL_DRAFT_STORAGE_KEY);
+
+                if (!rawDraft) {
+                    this.setStatus('当前没有可恢复的本地草稿。', 'info');
+                    return;
+                }
+
+                const parsedDraft = JSON.parse(rawDraft);
+                const snapshot = parsedDraft && parsedDraft.snapshot ? parsedDraft.snapshot : null;
+
+                if (!snapshot) {
+                    throw new Error('草稿内容无效');
+                }
+
+                this.applyHistorySnapshot(snapshot);
+                this.resetHistory();
+                this.refreshLocalDraftInfo();
+                this.setStatus('已恢复本地草稿。', 'success');
+            } catch (error) {
+                this.setStatus(error.message || '恢复本地草稿失败。', 'danger');
+            }
+        },
+        clearLocalDraft() {
+            try {
+                window.localStorage.removeItem(LOCAL_DRAFT_STORAGE_KEY);
+                this.draftInfo = null;
+                this.setStatus('本地草稿已清空。', 'warning');
+            } catch (error) {
+                this.setStatus('清空本地草稿失败。', 'danger');
+            }
         },
         setViewportMode(mode) {
             this.viewportMode = mode;
@@ -523,8 +1409,130 @@ createApp({
         applyButtonPreset(className) {
             this.applySelectedProps({ class: className });
         },
+        applyButtonActionPreset(actionType) {
+            const defaults = {
+                none: '',
+                message: '操作成功',
+                link: '/pages/index/index',
+                submit: '提交成功'
+            };
+
+            this.applySelectedProps({
+                actionType,
+                actionValue: actionType === 'none'
+                    ? ''
+                    : (this.selectedElement && this.selectedElement.props.actionValue) || defaults[actionType] || ''
+            });
+        },
         applyFieldPreset(className) {
             this.applySelectedProps({ class: className });
+        },
+        applyChoiceLayoutPreset(optionLayout) {
+            this.applySelectedProps({ optionLayout });
+        },
+        applyChoiceOptionsPreset(presetKey) {
+            const preset = CHOICE_OPTION_PRESETS.find((item) => item.key === presetKey);
+
+            if (!preset) {
+                return;
+            }
+
+            const nextProps = {
+                options: preset.options
+            };
+
+            if (this.selectedElement && this.selectedElement.type === 'checkbox-group') {
+                nextProps.value = '';
+            } else {
+                nextProps.value = preset.value || '';
+            }
+
+            if (this.selectedElement && this.selectedElement.type === 'select' && !this.selectedElement.props.placeholder) {
+                nextProps.placeholder = '请选择';
+            }
+
+            this.applySelectedProps(nextProps);
+        },
+        applyFieldTypePreset(inputType) {
+            const presets = {
+                text: {
+                    inputType: 'text',
+                    validationPattern: '',
+                    validationMessage: '',
+                    placeholder: '请输入内容'
+                },
+                tel: {
+                    inputType: 'tel',
+                    validationPattern: '^1\\d{10}$',
+                    validationMessage: '请输入有效的 11 位手机号',
+                    placeholder: '请输入手机号'
+                },
+                email: {
+                    inputType: 'email',
+                    validationPattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+                    validationMessage: '请输入有效的邮箱地址',
+                    placeholder: '请输入邮箱'
+                },
+                number: {
+                    inputType: 'number',
+                    validationPattern: '^\\d+(\\.\\d+)?$',
+                    validationMessage: '请输入数字',
+                    placeholder: '请输入数字'
+                }
+            };
+
+            const nextProps = presets[inputType];
+            if (!nextProps) {
+                return;
+            }
+
+            this.applySelectedProps(nextProps);
+        },
+        applyValidationPreset(type) {
+            const presets = {
+                none: {
+                    validationPattern: '',
+                    validationMessage: ''
+                },
+                phone: {
+                    validationPattern: '^1\\d{10}$',
+                    validationMessage: '请输入有效的 11 位手机号'
+                },
+                email: {
+                    validationPattern: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+                    validationMessage: '请输入有效的邮箱地址'
+                },
+                number: {
+                    validationPattern: '^\\d+(\\.\\d+)?$',
+                    validationMessage: '请输入数字'
+                }
+            };
+
+            if (!presets[type]) {
+                return;
+            }
+
+            this.applySelectedProps(presets[type]);
+        },
+        applySubmitResultPreset(type) {
+            const presets = {
+                keep: {
+                    submitResetForm: false,
+                    submitRedirectUrl: ''
+                },
+                reset: {
+                    submitResetForm: true
+                },
+                redirect: {
+                    submitRedirectUrl: this.projectType === 'wechat' ? '/pages/index/index' : 'https://example.com/success'
+                }
+            };
+
+            if (!presets[type]) {
+                return;
+            }
+
+            this.applySelectedProps(presets[type]);
         },
         applyWidthPreset(width) {
             this.applySelectedProps({ width });
@@ -540,6 +1548,215 @@ createApp({
         },
         applyRowPreset(style) {
             this.applySelectedProps({ style });
+        },
+        getSectionTemplateConfig(key) {
+            return SECTION_TEMPLATES.find((template) => template.key === key) || null;
+        },
+        getButtonActionLabel(actionType) {
+            const matched = BUTTON_ACTION_OPTIONS.find((item) => item.value === actionType);
+            return matched ? matched.label : '无动作';
+        },
+        getButtonActionPlaceholder(actionType) {
+            if (actionType === 'message') {
+                return '例如：报名成功，我们会尽快联系你';
+            }
+
+            if (actionType === 'link') {
+                return '例如：https://example.com 或 /pages/detail/detail';
+            }
+
+            if (actionType === 'submit') {
+                return '例如：提交成功，我们会尽快联系你';
+            }
+
+            return '当前动作不需要额外内容';
+        },
+        getButtonActionSummary(props = {}) {
+            const actionType = props.actionType || 'none';
+
+            if (actionType === 'none') {
+                return '';
+            }
+
+            const label = this.getButtonActionLabel(actionType);
+            const value = props.actionValue || '';
+            const extras = [];
+
+            if (actionType === 'submit' && props.submitResetForm) {
+                extras.push('提交后清空');
+            }
+
+            if (actionType === 'submit' && props.submitRedirectUrl) {
+                extras.push(`跳转到 ${props.submitRedirectUrl}`);
+            }
+
+            const summary = value ? `${label}：${value}` : label;
+
+            if (extras.length === 0) {
+                return summary;
+            }
+
+            return `${summary}（${extras.join('，')}）`;
+        },
+        getNodeByPath(root, path) {
+            let current = root;
+
+            for (const index of path || []) {
+                if (!current || !Array.isArray(current.children) || !current.children[index]) {
+                    return null;
+                }
+
+                current = current.children[index];
+            }
+
+            return current;
+        },
+        findTemplateRootForElement(elements, targetId, activeTemplateRoot = null) {
+            for (const element of elements || []) {
+                const nextTemplateRoot = element.props && element.props.templateKey
+                    ? element
+                    : activeTemplateRoot;
+
+                if (String(element.id) === String(targetId)) {
+                    return nextTemplateRoot;
+                }
+
+                const found = this.findTemplateRootForElement(element.children || [], targetId, nextTemplateRoot);
+
+                if (found) {
+                    return found;
+                }
+            }
+
+            return null;
+        },
+        getTemplateFieldValue(templateRoot, field) {
+            const targetNode = this.getNodeByPath(templateRoot, field.path);
+
+            if (!targetNode || !targetNode.props) {
+                return '';
+            }
+
+            return targetNode.props[field.propKey] || '';
+        },
+        updateTemplateField(fieldKey, value) {
+            if (!this.selectedTemplateRoot) {
+                return;
+            }
+
+            const templateKey = this.selectedTemplateRoot.props && this.selectedTemplateRoot.props.templateKey;
+            const fieldConfig = (TEMPLATE_FIELD_CONFIGS[templateKey] || []).find((field) => field.key === fieldKey);
+
+            if (!fieldConfig) {
+                return;
+            }
+
+            const targetNode = this.getNodeByPath(this.selectedTemplateRoot, fieldConfig.path);
+
+            if (!targetNode) {
+                return;
+            }
+
+            targetNode.props = {
+                ...targetNode.props,
+                [fieldConfig.propKey]: value
+            };
+            this.queueHistoryCapture();
+        },
+        getTemplateInsertionTarget() {
+            if (this.selectedElement && isContainerType(this.selectedElement.type)) {
+                if (!Array.isArray(this.selectedElement.children)) {
+                    this.selectedElement.children = [];
+                }
+
+                return {
+                    list: this.selectedElement.children,
+                    label: this.elementLabels[this.selectedElement.type] || this.selectedElement.type
+                };
+            }
+
+            return {
+                list: this.currentPage.elements,
+                label: this.currentPage.title || '当前页面'
+            };
+        },
+        insertSectionTemplate(key) {
+            const template = this.getSectionTemplateConfig(key);
+
+            if (!template || typeof template.build !== 'function') {
+                this.setStatus('模板不存在或暂不可用。', 'danger');
+                return;
+            }
+
+            const nextElements = template.build().map((element) => this.normalizeElement(element));
+
+            if (nextElements.length === 0) {
+                this.setStatus('模板内容为空。', 'warning');
+                return;
+            }
+
+            const target = this.getTemplateInsertionTarget();
+            target.list.push(...nextElements);
+            this.selectedElementId = nextElements[0].id;
+            this.captureHistory();
+            this.setStatus(`已插入“${template.name}”到${target.label}。`, 'success');
+        },
+        buildOutlineItems(elements, depth = 0, items = []) {
+            for (const element of elements || []) {
+                items.push({
+                    id: element.id,
+                    type: element.type,
+                    depth,
+                    label: this.elementLabels[element.type] || element.type,
+                    summary: this.getOutlineText(element)
+                });
+
+                if (Array.isArray(element.children) && element.children.length > 0) {
+                    this.buildOutlineItems(element.children, depth + 1, items);
+                }
+            }
+
+            return items;
+        },
+        getOutlineText(element) {
+            const props = element && element.props ? element.props : {};
+
+            switch (element.type) {
+                case 'text':
+                    return String(props.content || '文本内容').slice(0, 28);
+                case 'button':
+                    return props.text || '按钮文案';
+                case 'image':
+                    return props.alt || props.src || '图片资源';
+                case 'input':
+                case 'textarea':
+                    return props.label || props.placeholder || '表单字段';
+                case 'select':
+                case 'radio-group':
+                case 'checkbox-group':
+                    return `${props.label || props.placeholder || '表单字段'} · ${parseChoiceOptions(props.options).length} 项`;
+                case 'spacer':
+                    return props.height || '间距块';
+                case 'row':
+                case 'div':
+                    return props.class || props.style || '布局容器';
+                default:
+                    return '';
+            }
+        },
+        focusElement(elementId) {
+            this.selectedElementId = elementId;
+
+            window.requestAnimationFrame(() => {
+                const targetNode = document.querySelector(`[data-element-id="${String(elementId)}"]`);
+
+                if (targetNode && typeof targetNode.scrollIntoView === 'function') {
+                    targetNode.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center'
+                    });
+                }
+            });
         },
         createBlankPage() {
             return {
@@ -585,9 +1802,11 @@ createApp({
                 projectId: this.projectId,
                 projectName: this.projectName,
                 projectType: this.projectType,
+                theme: deepClone(this.theme),
                 pages: deepClone(this.pages),
                 currentPageId: this.currentPageId,
-                selectedElementId: this.selectedElementId
+                selectedElementId: this.selectedElementId,
+                viewportMode: this.viewportMode
             };
         },
         getSnapshotSignature(snapshot) {
@@ -625,6 +1844,7 @@ createApp({
 
             this.historyStack = nextStack;
             this.historyIndex = this.historyStack.length - 1;
+            this.queueDraftSave();
         },
         queueHistoryCapture() {
             if (this.isApplyingHistory) {
@@ -654,12 +1874,15 @@ createApp({
             this.projectId = snapshot.projectId || null;
             this.projectName = snapshot.projectName || '未命名项目';
             this.projectType = snapshot.projectType || 'h5';
+            this.theme = this.normalizeTheme(snapshot.theme || {});
             this.pages = this.hydratePages(snapshot.pages || []);
             this.currentPageId = this.pages.some((page) => page.id === snapshot.currentPageId)
                 ? snapshot.currentPageId
                 : this.pages[0].id;
             this.selectedElementId = snapshot.selectedElementId || null;
+            this.viewportMode = snapshot.viewportMode || 'desktop';
             this.isApplyingHistory = false;
+            this.queueDraftSave();
         },
         undoHistory() {
             this.flushHistoryCapture();
@@ -990,7 +2213,11 @@ createApp({
                         text: '立即操作',
                         class: 'btn btn-primary',
                         width: '',
-                        style: ''
+                        style: '',
+                        actionType: 'none',
+                        actionValue: '',
+                        submitResetForm: false,
+                        submitRedirectUrl: ''
                     };
                 case 'input':
                     return {
@@ -998,6 +2225,10 @@ createApp({
                         required: false,
                         placeholder: '请输入内容',
                         value: '',
+                        fieldKey: `field_${createId('input')}`,
+                        inputType: 'text',
+                        validationPattern: '',
+                        validationMessage: '',
                         class: 'form-control',
                         width: '',
                         style: ''
@@ -1009,7 +2240,46 @@ createApp({
                         placeholder: '请输入多行内容',
                         value: '',
                         rows: '4',
+                        fieldKey: `field_${createId('textarea')}`,
+                        validationPattern: '',
+                        validationMessage: '',
                         class: 'form-control',
+                        width: '',
+                        style: ''
+                    };
+                case 'select':
+                    return {
+                        label: '下拉选择',
+                        required: false,
+                        placeholder: '请选择',
+                        value: '',
+                        fieldKey: `field_${createId('select')}`,
+                        options: 'option_a|选项一\noption_b|选项二\noption_c|选项三',
+                        class: 'form-control',
+                        width: '',
+                        style: ''
+                    };
+                case 'radio-group':
+                    return {
+                        label: '单选项',
+                        required: false,
+                        value: '',
+                        fieldKey: `field_${createId('radio')}`,
+                        options: 'option_a|选项一\noption_b|选项二\noption_c|选项三',
+                        optionLayout: 'vertical',
+                        class: '',
+                        width: '',
+                        style: ''
+                    };
+                case 'checkbox-group':
+                    return {
+                        label: '多选项',
+                        required: false,
+                        value: '',
+                        fieldKey: `field_${createId('checkbox')}`,
+                        options: 'option_a|选项一\noption_b|选项二\noption_c|选项三',
+                        optionLayout: 'vertical',
+                        class: '',
                         width: '',
                         style: ''
                     };
@@ -1205,7 +2475,7 @@ createApp({
             return normalized || `page-${fallbackIndex}`;
         },
         createUniquePageName(value, fallbackIndex, usedNames = null) {
-            const names = usedNames || new Set(this.pages.map((page) => page.name));
+            const names = usedNames || new Set(this.safePages.map((page) => page.name));
             const baseName = this.normalizePageName(value, fallbackIndex);
             let nextName = baseName;
             let suffix = 2;
@@ -1220,14 +2490,14 @@ createApp({
         },
         normalizeCurrentPageName() {
             const usedNames = new Set(
-                this.pages
+                this.safePages
                     .filter((page) => page.id !== this.currentPage.id)
                     .map((page) => page.name)
             );
 
             this.currentPage.name = this.createUniquePageName(
                 this.currentPage.name || this.currentPage.title,
-                this.pages.findIndex((page) => page.id === this.currentPage.id) + 1,
+                this.safePages.findIndex((page) => page.id === this.currentPage.id) + 1,
                 usedNames
             );
             this.captureHistory();
@@ -1237,6 +2507,7 @@ createApp({
 
             return {
                 title: this.projectName || '未命名项目',
+                theme: deepClone(this.theme),
                 pages: this.safePages.map((page, index) => ({
                     name: this.createUniquePageName(page.name || page.title, index + 1, usedNames),
                     title: page.title || `页面 ${index + 1}`,
@@ -1251,6 +2522,7 @@ createApp({
             this.projectId = project.id || null;
             this.projectName = project.name || config.title || '未命名项目';
             this.projectType = project.type || 'h5';
+            this.theme = this.normalizeTheme(config.theme || {});
             this.pages = pages;
             this.currentPageId = pages[0].id;
             this.selectedElementId = null;
@@ -1259,6 +2531,7 @@ createApp({
             this.hasPreview = false;
             this.wechatCode = '';
             this.h5Code = '';
+            this.saveLocalDraft(true);
         },
         createNewProject() {
             const blankPage = this.createBlankPage();
@@ -1266,6 +2539,7 @@ createApp({
             this.projectId = null;
             this.projectName = '未命名项目';
             this.projectType = 'h5';
+            this.theme = createDefaultTheme();
             this.pages = [blankPage];
             this.currentPageId = blankPage.id;
             this.selectedElementId = null;
@@ -1276,6 +2550,7 @@ createApp({
             this.wechatCode = '';
             this.h5Code = '';
             this.resetHistory();
+            this.saveLocalDraft(true);
             this.setStatus('已切换到新的空白项目。', 'success');
         },
         buildExportPayload() {
@@ -1468,6 +2743,7 @@ createApp({
 
                 await this.fetchProjects(true);
                 this.captureHistory();
+                this.saveLocalDraft(true);
                 this.setStatus(isUpdate ? '项目已更新。' : '项目已创建。', 'success');
             } catch (error) {
                 this.setStatus(error.message || '保存项目失败。', 'danger');
@@ -1513,7 +2789,7 @@ createApp({
             const pageCount = project.config && Array.isArray(project.config.pages)
                 ? project.config.pages.length
                 : 0;
-            const updatedAt = project.updated_at || project.created_at || '未知时间';
+            const updatedAt = this.formatDateTime(project.updated_at || project.created_at || '未知时间');
 
             return `${updatedAt} · ${pageCount} 个页面`;
         },
