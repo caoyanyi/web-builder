@@ -1784,6 +1784,15 @@ createApp({
 
             return definitions;
         },
+        buildPageFieldDefinitionMap(pageContext = {}) {
+            const pageName = pageContext.pageName || this.currentPage.name || 'index';
+            const page = this.safePages.find((item) => item.name === pageName) || this.currentPage;
+            const definitions = {};
+
+            this.collectFieldDefinitions(page && page.elements ? page.elements : [], page, definitions);
+
+            return definitions;
+        },
         collectFieldDefinitions(elements, page, definitions) {
             (elements || []).forEach((element) => {
                 const props = element && element.props ? element.props : {};
@@ -1812,27 +1821,38 @@ createApp({
         getFieldDefinition(fieldKey) {
             return this.fieldDefinitionMap[fieldKey] || null;
         },
-        getSubmissionFieldLabel(fieldKey) {
-            const definition = this.getFieldDefinition(fieldKey);
+        getSubmissionFieldMeta(submission, fieldKey) {
+            const submissionFieldMeta = submission && submission.field_meta && typeof submission.field_meta === 'object'
+                ? submission.field_meta[fieldKey]
+                : null;
+
+            if (submissionFieldMeta && typeof submissionFieldMeta === 'object') {
+                return submissionFieldMeta;
+            }
+
+            return this.getFieldDefinition(fieldKey);
+        },
+        getSubmissionFieldLabel(submission, fieldKey) {
+            const definition = this.getSubmissionFieldMeta(submission, fieldKey);
             return definition && definition.label ? definition.label : fieldKey;
         },
-        getFieldOptionLabel(fieldKey, rawValue) {
-            const definition = this.getFieldDefinition(fieldKey);
+        getFieldOptionLabel(submission, fieldKey, rawValue) {
+            const definition = this.getSubmissionFieldMeta(submission, fieldKey);
             const options = definition && Array.isArray(definition.options) ? definition.options : [];
             const matched = options.find((option) => String(option.value) === String(rawValue));
 
             return matched ? matched.label : rawValue;
         },
-        formatSubmissionFieldValue(fieldKey, fieldValue) {
+        formatSubmissionFieldValue(submission, fieldKey, fieldValue) {
             if (Array.isArray(fieldValue)) {
-                return fieldValue.map((item) => this.getFieldOptionLabel(fieldKey, item)).join(', ');
+                return fieldValue.map((item) => this.getFieldOptionLabel(submission, fieldKey, item)).join(', ');
             }
 
             if (fieldValue === null || fieldValue === undefined || fieldValue === '') {
                 return '未填写';
             }
 
-            return String(this.getFieldOptionLabel(fieldKey, fieldValue));
+            return String(this.getFieldOptionLabel(submission, fieldKey, fieldValue));
         },
         getSubmissionFieldEntries(submission) {
             const formData = submission && submission.form_data && typeof submission.form_data === 'object'
@@ -1841,9 +1861,9 @@ createApp({
 
             return Object.entries(formData).map(([fieldKey, fieldValue]) => ({
                 key: fieldKey,
-                label: this.getSubmissionFieldLabel(fieldKey),
+                label: this.getSubmissionFieldLabel(submission, fieldKey),
                 rawValue: fieldValue,
-                displayValue: this.formatSubmissionFieldValue(fieldKey, fieldValue)
+                displayValue: this.formatSubmissionFieldValue(submission, fieldKey, fieldValue)
             }));
         },
         getSubmissionPreviewEntries(submission, limit = 3) {
@@ -1886,7 +1906,7 @@ createApp({
                 { key: 'submitted_at', label: '提交时间' },
                 ...dynamicFieldKeys.map((fieldKey) => ({
                     key: fieldKey,
-                    label: this.getSubmissionFieldLabel(fieldKey)
+                    label: this.getSubmissionFieldLabel(this.filteredSubmissionRecords.find((submission) => this.getSubmissionFieldEntries(submission).some((field) => field.key === fieldKey)) || null, fieldKey)
                 }))
             ];
             const rows = this.filteredSubmissionRecords.map((submission) => {
@@ -1909,7 +1929,7 @@ createApp({
 
                 return columnDefs.map((column) => {
                     const value = dynamicFieldKeys.includes(column.key)
-                        ? this.formatSubmissionFieldValue(column.key, row[column.key])
+                        ? this.formatSubmissionFieldValue(submission, column.key, row[column.key])
                         : row[column.key];
                     return this.escapeCsvValue(value);
                 }).join(',');
@@ -3078,6 +3098,8 @@ createApp({
             };
         },
         buildSubmissionPayload(formData, pageContext = {}, source = 'builder-preview') {
+            const fieldMeta = this.buildPageFieldDefinitionMap(pageContext);
+
             return {
                 project_id: this.projectId || null,
                 project_name: this.projectName || '未命名项目',
@@ -3086,7 +3108,8 @@ createApp({
                 page_title: pageContext.pageTitle || this.currentPage.title || '首页',
                 source,
                 submitted_at: new Date().toISOString(),
-                form_data: formData
+                form_data: formData,
+                field_meta: fieldMeta
             };
         },
         async submitBuilderPreviewForm(formData, pageContext, config = {}) {

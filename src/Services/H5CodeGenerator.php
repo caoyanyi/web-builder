@@ -445,7 +445,8 @@ class App {
             page_title: this.currentPage?.title || '首页',
             source: 'h5',
             submitted_at: new Date().toISOString(),
-            form_data: formData
+            form_data: formData,
+            field_meta: config.fieldMeta || {}
         };
 
         const response = await fetch(config.submitEndpoint, {
@@ -462,6 +463,54 @@ class App {
         }
 
         return json;
+    }
+
+    buildFieldMeta(fields = []) {
+        const fieldMeta = {};
+
+        fields.forEach((field) => {
+            const fieldKey = field.dataset.fieldKey || '';
+            if (!fieldKey) {
+                return;
+            }
+
+            const fieldType = field.dataset.fieldKind || field.tagName.toLowerCase();
+            const fieldLabel = field.dataset.label || fieldKey;
+            const meta = {
+                key: fieldKey,
+                label: fieldLabel,
+                type: fieldType,
+                options: [],
+                page_name: this.currentPage?.name || 'index',
+                page_title: this.currentPage?.title || '首页'
+            };
+
+            if (fieldType === 'select') {
+                meta.options = Array.from(field.querySelectorAll('option'))
+                    .filter((option) => option.value !== '')
+                    .map((option) => ({
+                        value: option.value,
+                        label: option.textContent.trim() || option.value
+                    }));
+            }
+
+            if (fieldType === 'radio-group' || fieldType === 'checkbox-group') {
+                meta.options = Array.from(field.querySelectorAll('input'))
+                    .map((input) => {
+                        const labelNode = input.closest('label');
+                        const textNode = labelNode ? labelNode.querySelector('span') : null;
+
+                        return {
+                            value: input.value,
+                            label: textNode ? textNode.textContent.trim() : input.value
+                        };
+                    });
+            }
+
+            fieldMeta[fieldKey] = meta;
+        });
+
+        return fieldMeta;
     }
 
     async handleSubmitAction(trigger, config = {}) {
@@ -483,9 +532,13 @@ class App {
         });
 
         console.log('builder form submit', formData);
+        const fieldMeta = this.buildFieldMeta(fields);
 
         try {
-            await this.submitFormData(formData, config);
+            await this.submitFormData(formData, {
+                ...config,
+                fieldMeta
+            });
         } catch (error) {
             alert(error.message || '提交失败');
             return false;

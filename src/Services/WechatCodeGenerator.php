@@ -413,7 +413,22 @@ page {
           page_title: this.data.builderPageTitle || '首页',
           source: 'wechat',
           submitted_at: new Date().toISOString(),
-          form_data: values
+          form_data: values,
+          field_meta: schema.reduce((result, field) => {
+            result[field.key] = {
+              key: field.key,
+              label: field.label || field.key,
+              type: field.type || '',
+              options: Array.isArray(field.options) ? field.options.map((option) => ({
+                value: option.value,
+                label: option.label || option.value
+              })) : [],
+              page_name: this.data.builderPageName || 'index',
+              page_title: this.data.builderPageTitle || '首页'
+            };
+
+            return result;
+          }, {})
         },
         success: (response) => {
           const json = response.data || {};

@@ -12,6 +12,7 @@ class FormSubmission
     public $page_title;
     public $source;
     public $form_data = [];
+    public $field_meta = [];
     public $meta = [];
     public $submitted_at;
     public $created_at;
@@ -129,6 +130,7 @@ class FormSubmission
             'page_title' => $this->page_title ?: '首页',
             'source' => $this->source ?: 'unknown',
             'form_data' => is_array($this->form_data) ? $this->form_data : [],
+            'field_meta' => is_array($this->field_meta) ? $this->field_meta : [],
             'meta' => is_array($this->meta) ? $this->meta : [],
             'submitted_at' => $this->submitted_at,
             'created_at' => $this->created_at,
@@ -146,6 +148,7 @@ class FormSubmission
         $record->page_title = $data['page_title'] ?? '首页';
         $record->source = $data['source'] ?? 'unknown';
         $record->form_data = isset($data['form_data']) && is_array($data['form_data']) ? $data['form_data'] : [];
+        $record->field_meta = isset($data['field_meta']) && is_array($data['field_meta']) ? $data['field_meta'] : [];
         $record->meta = isset($data['meta']) && is_array($data['meta']) ? $data['meta'] : [];
         $record->submitted_at = $data['submitted_at'] ?? null;
         $record->created_at = $data['created_at'] ?? null;

@@ -48,6 +48,9 @@ class FormSubmissionController
         $record->page_title = $data['page_title'] ?? '首页';
         $record->source = $data['source'] ?? 'builder-preview';
         $record->form_data = $formData;
+        $record->field_meta = isset($data['field_meta']) && is_array($data['field_meta'])
+            ? $this->normalizeFieldMeta($data['field_meta'])
+            : [];
         $record->meta = [
             'user_agent' => $request->getHeaderLine('User-Agent'),
             'ip' => $this->resolveClientIp($request),
@@ -119,6 +122,40 @@ class FormSubmissionController
     {
         $serverParams = $request->getServerParams();
         return (string) ($serverParams['REMOTE_ADDR'] ?? '');
+    }
+
+    private function normalizeFieldMeta(array $fieldMeta): array
+    {
+        $normalized = [];
+
+        foreach ($fieldMeta as $fieldKey => $meta) {
+            if (!is_array($meta)) {
+                continue;
+            }
+
+            $normalizedOptions = [];
+            foreach (($meta['options'] ?? []) as $option) {
+                if (!is_array($option)) {
+                    continue;
+                }
+
+                $normalizedOptions[] = [
+                    'value' => (string) ($option['value'] ?? ''),
+                    'label' => (string) ($option['label'] ?? ($option['value'] ?? '')),
+                ];
+            }
+
+            $normalized[(string) $fieldKey] = [
+                'key' => (string) ($meta['key'] ?? $fieldKey),
+                'label' => (string) ($meta['label'] ?? $fieldKey),
+                'type' => (string) ($meta['type'] ?? ''),
+                'options' => $normalizedOptions,
+                'page_name' => (string) ($meta['page_name'] ?? ''),
+                'page_title' => (string) ($meta['page_title'] ?? ''),
+            ];
+        }
+
+        return $normalized;
     }
 
     private function json(Response $response, array $payload, int $status = 200): Response
