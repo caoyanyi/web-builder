@@ -1126,6 +1126,12 @@
                                         >
                                         <div class="form-text">多选字段建议优先使用“包含 / 不包含”；隐藏后的字段不会参与校验和提交。</div>
                                     </div>
+                                    <div
+                                        v-if="selectedConditionFieldIssue"
+                                        :class="['form-text mt-3', selectedConditionFieldIssue.tone === 'danger' ? 'text-danger' : 'text-warning']"
+                                    >
+                                        {{ selectedConditionFieldIssue.message }}
+                                    </div>
                                     <div v-if="selectedConditionSummary" class="form-text mt-3">
                                         当前规则：{{ selectedConditionSummary }}
                                     </div>
@@ -1206,6 +1212,12 @@
                             </div>
                             <div v-if="field.key === 'helperText'" class="form-text">
                                 会显示在字段下方，适合填写规则、示例格式或补充说明。
+                            </div>
+                            <div
+                                v-if="field.key === 'fieldKey' && selectedFieldKeyIssue"
+                                :class="['form-text', selectedFieldKeyIssue.tone === 'danger' ? 'text-danger' : (selectedFieldKeyIssue.tone === 'warning' ? 'text-warning' : '')]"
+                            >
+                                {{ selectedFieldKeyIssue.message }}
                             </div>
                             <div v-if="field.key === 'maxLength' && ['input', 'textarea'].includes(selectedElementType)" class="form-text">
                                 配置后会显示实时字数计数，并在预览与导出结果中限制输入长度。

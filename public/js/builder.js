@@ -818,6 +818,28 @@ function resolveElementFieldKey(element = null) {
     return props.fieldKey || fallbackKey;
 }
 
+function normalizeFieldKeyInput(value = '', { allowEmpty = false, fallback = 'field' } = {}) {
+    const rawValue = String(value || '').trim();
+
+    if (!rawValue) {
+        return allowEmpty ? '' : fallback;
+    }
+
+    let normalized = rawValue
+        .replace(/[^\w]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+
+    if (!normalized) {
+        return allowEmpty ? '' : fallback;
+    }
+
+    if (/^\d/.test(normalized)) {
+        normalized = `${fallback}_${normalized}`;
+    }
+
+    return normalized;
+}
+
 function describeConditionRule(props = {}, fieldDefinitions = {}) {
     if (!props || !props.conditionEnabled || !props.conditionFieldKey) {
         return '';
@@ -1861,6 +1883,12 @@ createApp({
                 pageName: this.currentPage.name || 'index'
             });
         },
+        currentPageFieldDiagnostics() {
+            return this.buildPageFieldDiagnostics(this.currentPage);
+        },
+        projectFieldDiagnostics() {
+            return this.buildProjectFieldDiagnostics();
+        },
         selectedSubmission() {
             if (!this.selectedSubmissionId) {
                 return null;
@@ -2004,6 +2032,43 @@ createApp({
         selectedElementFieldKey() {
             return resolveElementFieldKey(this.selectedElement);
         },
+        selectedFieldKeyIssue() {
+            if (!this.selectedElement || !FORM_FIELD_TYPES.includes(this.selectedElement.type)) {
+                return null;
+            }
+
+            const rawFieldKey = String((this.selectedElement.props && this.selectedElement.props.fieldKey) || '').trim();
+            if (!rawFieldKey) {
+                return {
+                    tone: 'warning',
+                    message: '当前未显式填写字段标识，预览和导出时会回退为自动生成的 key。'
+                };
+            }
+
+            const normalizedFieldKey = normalizeFieldKeyInput(rawFieldKey, {
+                allowEmpty: true,
+                fallback: 'field'
+            });
+            if (normalizedFieldKey !== rawFieldKey) {
+                return {
+                    tone: 'warning',
+                    message: `字段标识会被规范成 ${normalizedFieldKey}，建议使用英文、数字和下划线。`
+                };
+            }
+
+            const duplicate = this.currentPageFieldDiagnostics.duplicates.find((item) => item.key === rawFieldKey);
+            if (duplicate) {
+                return {
+                    tone: 'danger',
+                    message: `当前页面有 ${duplicate.count} 个字段共用了 ${rawFieldKey}，会影响条件显隐、汇总和提交数据。`
+                };
+            }
+
+            return {
+                tone: 'muted',
+                message: '建议使用英文、数字和下划线，并保证当前页面内唯一。'
+            };
+        },
         conditionalFieldOptions() {
             return Object.values(this.currentPageFieldDefinitionMap)
                 .filter((field) => field.key !== this.selectedElementFieldKey)
@@ -2030,6 +2095,37 @@ createApp({
         selectedConditionValueOptions() {
             const definition = this.selectedConditionSourceDefinition;
             return definition && Array.isArray(definition.options) ? definition.options : [];
+        },
+        selectedConditionFieldIssue() {
+            if (!this.selectedElement || !this.selectedElement.props || !this.selectedElement.props.conditionEnabled) {
+                return null;
+            }
+
+            const conditionFieldKey = String(this.selectedElement.props.conditionFieldKey || '').trim();
+            if (!conditionFieldKey) {
+                return {
+                    tone: 'warning',
+                    message: '当前还没有选择依赖字段，条件显隐不会生效。'
+                };
+            }
+
+            const duplicate = this.currentPageFieldDiagnostics.duplicates.find((item) => item.key === conditionFieldKey);
+            if (duplicate) {
+                return {
+                    tone: 'danger',
+                    message: `依赖字段 ${conditionFieldKey} 在当前页面重复出现，条件判断结果可能不稳定。`
+                };
+            }
+
+            const invalidIssue = this.currentPageFieldDiagnostics.invalidConditions.find((item) => String(item.elementId) === String(this.selectedElement.id));
+            if (invalidIssue) {
+                return {
+                    tone: 'danger',
+                    message: `依赖字段 ${conditionFieldKey} 当前不存在，请重新选择有效字段。`
+                };
+            }
+
+            return null;
         },
         shouldUseConditionValueOptions() {
             return this.shouldShowConditionValue && this.selectedConditionValueOptions.length > 0;
@@ -2761,6 +2857,123 @@ createApp({
             this.collectFieldDefinitions(page && page.elements ? page.elements : [], page, definitions);
 
             return definitions;
+        },
+        collectFieldKeyStats(elements, page, stats = {}) {
+            (elements || []).forEach((element) => {
+                const props = element && element.props ? element.props : {};
+                const type = element && element.type ? element.type : '';
+
+                if (FORM_FIELD_TYPES.includes(type)) {
+                    const fieldKey = resolveElementFieldKey(element);
+                    const nextItem = stats[fieldKey] || {
+                        key: fieldKey,
+                        count: 0,
+                        labels: [],
+                        elementIds: [],
+                        pageName: page && page.name ? page.name : 'index',
+                        pageTitle: page && page.title ? page.title : '首页'
+                    };
+
+                    nextItem.count += 1;
+                    nextItem.elementIds.push(String(element.id || ''));
+                    nextItem.labels.push(props.label || props.placeholder || fieldKey);
+                    stats[fieldKey] = nextItem;
+                }
+
+                if (Array.isArray(element.children) && element.children.length > 0) {
+                    this.collectFieldKeyStats(element.children, page, stats);
+                }
+            });
+
+            return stats;
+        },
+        collectInvalidConditionRefs(elements, page, fieldStats = {}, issues = []) {
+            (elements || []).forEach((element) => {
+                const props = element && element.props ? element.props : {};
+
+                if (props.conditionEnabled && props.conditionFieldKey) {
+                    const dependencyKey = String(props.conditionFieldKey || '').trim();
+                    if (dependencyKey && !fieldStats[dependencyKey]) {
+                        issues.push({
+                            elementId: String(element.id || ''),
+                            elementType: element.type || '',
+                            conditionFieldKey: dependencyKey,
+                            pageName: page && page.name ? page.name : 'index',
+                            pageTitle: page && page.title ? page.title : '首页'
+                        });
+                    }
+                }
+
+                if (Array.isArray(element.children) && element.children.length > 0) {
+                    this.collectInvalidConditionRefs(element.children, page, fieldStats, issues);
+                }
+            });
+
+            return issues;
+        },
+        buildPageFieldDiagnostics(page = null) {
+            const currentPage = page || this.currentPage;
+            const fieldStats = this.collectFieldKeyStats(currentPage && currentPage.elements ? currentPage.elements : [], currentPage, {});
+            const duplicates = Object.values(fieldStats)
+                .filter((item) => item.count > 1)
+                .sort((left, right) => right.count - left.count || left.key.localeCompare(right.key, 'zh-CN'));
+            const invalidConditions = this.collectInvalidConditionRefs(currentPage && currentPage.elements ? currentPage.elements : [], currentPage, fieldStats, []);
+
+            return {
+                pageName: currentPage && currentPage.name ? currentPage.name : 'index',
+                pageTitle: currentPage && currentPage.title ? currentPage.title : '首页',
+                fieldStats,
+                duplicates,
+                invalidConditions,
+                hasIssues: duplicates.length > 0 || invalidConditions.length > 0
+            };
+        },
+        buildProjectFieldDiagnostics() {
+            const pages = this.safePages.map((page) => this.buildPageFieldDiagnostics(page));
+
+            return {
+                pages,
+                duplicates: pages.flatMap((page) => page.duplicates),
+                invalidConditions: pages.flatMap((page) => page.invalidConditions),
+                hasIssues: pages.some((page) => page.hasIssues)
+            };
+        },
+        buildFieldIntegrityMessage(diagnostics, actionLabel = '当前操作') {
+            if (!diagnostics || !diagnostics.hasIssues) {
+                return '';
+            }
+
+            const messageParts = [];
+            const firstDuplicatePage = (diagnostics.pages || []).find((page) => page.duplicates.length > 0);
+            const firstInvalidPage = (diagnostics.pages || []).find((page) => page.invalidConditions.length > 0);
+
+            if (firstDuplicatePage) {
+                const duplicateText = firstDuplicatePage.duplicates
+                    .slice(0, 2)
+                    .map((item) => `${item.key}（${item.count} 个）`)
+                    .join('、');
+                messageParts.push(`${firstDuplicatePage.pageTitle} 存在重复字段标识：${duplicateText}`);
+            }
+
+            if (firstInvalidPage) {
+                const invalidText = firstInvalidPage.invalidConditions
+                    .slice(0, 2)
+                    .map((item) => item.conditionFieldKey)
+                    .join('、');
+                messageParts.push(`${firstInvalidPage.pageTitle} 存在失效的条件依赖：${invalidText}`);
+            }
+
+            return `${actionLabel}前请先修复字段配置问题。${messageParts.join('；')}`;
+        },
+        ensureProjectFieldIntegrity(actionLabel = '当前操作') {
+            const diagnostics = this.projectFieldDiagnostics;
+
+            if (!diagnostics.hasIssues) {
+                return true;
+            }
+
+            this.setStatus(this.buildFieldIntegrityMessage(diagnostics, actionLabel), 'danger');
+            return false;
         },
         collectFieldDefinitions(elements, page, definitions) {
             (elements || []).forEach((element) => {
@@ -3715,6 +3928,17 @@ createApp({
                 nextValue = Boolean(value);
             }
 
+            if (key === 'fieldKey') {
+                nextValue = normalizeFieldKeyInput(value, {
+                    allowEmpty: true,
+                    fallback: 'field'
+                });
+            }
+
+            if (key === 'conditionFieldKey') {
+                nextValue = String(value || '').trim();
+            }
+
             this.selectedElement.props = {
                 ...this.selectedElement.props,
                 [key]: nextValue
@@ -3925,6 +4149,11 @@ createApp({
             this.syncProjectUrl(this.projectId || null);
             this.saveLocalDraft(true);
             this.fetchSubmissions(true);
+
+            const diagnostics = this.buildProjectFieldDiagnostics();
+            if (diagnostics.hasIssues) {
+                this.setStatus(this.buildFieldIntegrityMessage(diagnostics, '当前项目加载后检测到'), 'warning');
+            }
         },
         createNewProject() {
             const blankPage = this.createBlankPage();
@@ -4000,7 +4229,12 @@ createApp({
 
                     this.applyProject(importedProject);
                     this.resetHistory();
-                    this.setStatus(`已导入项目“${this.projectName}”。`, 'success');
+                    const diagnostics = this.buildProjectFieldDiagnostics();
+                    if (diagnostics.hasIssues) {
+                        this.setStatus(`已导入项目“${this.projectName}”，但检测到字段配置风险。${this.buildFieldIntegrityMessage(diagnostics, '后续预览或导出')}`, 'warning');
+                    } else {
+                        this.setStatus(`已导入项目“${this.projectName}”。`, 'success');
+                    }
                 } catch (error) {
                     this.setStatus(error.message || '导入项目失败。', 'danger');
                 }
@@ -4687,6 +4921,10 @@ createApp({
         async exportProjectBundle(type) {
             this.flushHistoryCapture();
 
+            if (!this.ensureProjectFieldIntegrity(type === 'h5' ? '导出 H5' : '导出微信小程序')) {
+                return;
+            }
+
             if (type === 'h5') {
                 this.isExportingH5 = true;
             } else {
@@ -4820,7 +5058,12 @@ createApp({
                 await this.fetchSubmissions(true);
                 this.captureHistory();
                 this.saveLocalDraft(true);
-                this.setStatus(isUpdate ? '项目已更新。' : '项目已创建。', 'success');
+                const diagnostics = this.buildProjectFieldDiagnostics();
+                if (diagnostics.hasIssues) {
+                    this.setStatus(`${isUpdate ? '项目已更新' : '项目已创建'}，但仍存在字段配置风险。${this.buildFieldIntegrityMessage(diagnostics, '后续预览或导出')}`, 'warning');
+                } else {
+                    this.setStatus(isUpdate ? '项目已更新。' : '项目已创建。', 'success');
+                }
             } catch (error) {
                 this.setStatus(error.message || '保存项目失败。', 'danger');
             } finally {
@@ -4834,7 +5077,12 @@ createApp({
                 const json = await this.requestJson(`/api/projects/${projectId}`);
                 this.applyProject(json.data);
                 this.resetHistory();
-                this.setStatus(`已加载项目“${this.projectName}”。`, 'success');
+                const diagnostics = this.buildProjectFieldDiagnostics();
+                if (diagnostics.hasIssues) {
+                    this.setStatus(`已加载项目“${this.projectName}”，但检测到字段配置风险。${this.buildFieldIntegrityMessage(diagnostics, '后续预览或导出')}`, 'warning');
+                } else {
+                    this.setStatus(`已加载项目“${this.projectName}”。`, 'success');
+                }
             } catch (error) {
                 this.setStatus(error.message || '加载项目失败。', 'danger');
             } finally {
@@ -4871,6 +5119,11 @@ createApp({
         },
         async previewProject() {
             this.flushHistoryCapture();
+
+            if (!this.ensureProjectFieldIntegrity('预览')) {
+                return;
+            }
+
             this.isPreviewLoading = true;
 
             try {
@@ -4901,6 +5154,11 @@ createApp({
         },
         async generateCode() {
             this.flushHistoryCapture();
+
+            if (!this.ensureProjectFieldIntegrity('生成代码')) {
+                return;
+            }
+
             this.isGenerating = true;
 
             try {
