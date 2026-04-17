@@ -1342,6 +1342,78 @@ createApp({
             return Array.from(statsMap.values())
                 .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label, 'zh-CN'));
         },
+        submissionTrendSeries() {
+            const counts = new Map();
+
+            this.filteredSubmissionRecords.forEach((submission) => {
+                const dateKey = this.normalizeSubmissionDateKey(submission.submitted_at || submission.created_at || '');
+
+                if (!dateKey) {
+                    return;
+                }
+
+                counts.set(dateKey, (counts.get(dateKey) || 0) + 1);
+            });
+
+            if (counts.size === 0) {
+                return [];
+            }
+
+            const sortedKeys = Array.from(counts.keys()).sort();
+            const latestKey = sortedKeys[sortedKeys.length - 1];
+            const dateKeys = this.buildRecentDateKeys(latestKey, 7);
+            const maxCount = Math.max(...dateKeys.map((dateKey) => counts.get(dateKey) || 0), 0);
+
+            return dateKeys.map((dateKey) => {
+                const count = counts.get(dateKey) || 0;
+                return {
+                    key: dateKey,
+                    label: this.formatSubmissionDateLabel(dateKey, { short: true }),
+                    fullLabel: this.formatSubmissionDateLabel(dateKey),
+                    count,
+                    barHeight: maxCount > 0 ? Math.max(count > 0 ? 14 : 0, Math.round((count / maxCount) * 100)) : 0
+                };
+            });
+        },
+        submissionTrendStats() {
+            const series = this.submissionTrendSeries;
+
+            if (series.length === 0) {
+                return {
+                    total: 0,
+                    average: '0',
+                    peakLabel: '',
+                    peakCount: 0,
+                    latestLabel: '',
+                    latestCount: 0,
+                    delta: 0,
+                    direction: 'flat'
+                };
+            }
+
+            const total = series.reduce((sum, item) => sum + item.count, 0);
+            const peak = series.reduce((best, item) => {
+                if (!best || item.count > best.count) {
+                    return item;
+                }
+
+                return best;
+            }, null);
+            const latest = series[series.length - 1];
+            const previous = series[series.length - 2] || null;
+            const delta = previous ? latest.count - previous.count : latest.count;
+
+            return {
+                total,
+                average: series.length > 0 ? (total / series.length).toFixed(total % series.length === 0 ? 0 : 1) : '0',
+                peakLabel: peak ? peak.fullLabel : '',
+                peakCount: peak ? peak.count : 0,
+                latestLabel: latest ? latest.fullLabel : '',
+                latestCount: latest ? latest.count : 0,
+                delta,
+                direction: delta > 0 ? 'up' : (delta < 0 ? 'down' : 'flat')
+            };
+        },
         submissionFieldCatalog() {
             const statsMap = new Map();
 
@@ -1713,6 +1785,52 @@ createApp({
                 hour: '2-digit',
                 minute: '2-digit'
             }).format(date);
+        },
+        normalizeSubmissionDateKey(value) {
+            const directValue = String(value || '').trim();
+
+            if (/^\d{4}-\d{2}-\d{2}$/.test(directValue)) {
+                return directValue;
+            }
+
+            const date = new Date(directValue);
+            if (Number.isNaN(date.getTime())) {
+                return '';
+            }
+
+            return date.toISOString().slice(0, 10);
+        },
+        formatSubmissionDateLabel(dateKey, options = {}) {
+            if (!dateKey) {
+                return '未知日期';
+            }
+
+            const [year, month, day] = String(dateKey).split('-');
+            if (!year || !month || !day) {
+                return String(dateKey);
+            }
+
+            if (options.short) {
+                return `${month}-${day}`;
+            }
+
+            return `${year}-${month}-${day}`;
+        },
+        buildRecentDateKeys(endDateKey, length = 7) {
+            const [year, month, day] = String(endDateKey || '').split('-').map((item) => Number(item));
+
+            if (!year || !month || !day) {
+                return [];
+            }
+
+            const result = [];
+
+            for (let offset = length - 1; offset >= 0; offset -= 1) {
+                const current = new Date(Date.UTC(year, month - 1, day - offset));
+                result.push(current.toISOString().slice(0, 10));
+            }
+
+            return result;
         },
         normalizeTheme(theme = {}) {
             const defaults = createDefaultTheme();

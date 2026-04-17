@@ -303,6 +303,53 @@
                             <div class="submission-insight-card">
                                 <div class="submission-insight-head">
                                     <div>
+                                        <strong>提交趋势</strong>
+                                        <p class="mb-0 text-muted small">最近 7 天的提交量变化，基于当前筛选结果统计。</p>
+                                    </div>
+                                    <span class="status-pill">{{ submissionTrendStats.total }} 条</span>
+                                </div>
+
+                                <div class="submission-trend-stats">
+                                    <div class="submission-trend-stat">
+                                        <strong>{{ submissionTrendStats.average }}</strong>
+                                        <span>日均提交</span>
+                                    </div>
+                                    <div class="submission-trend-stat">
+                                        <strong>{{ submissionTrendStats.latestCount }}</strong>
+                                        <span>最近一天</span>
+                                    </div>
+                                    <div class="submission-trend-stat">
+                                        <strong>{{ submissionTrendStats.peakCount }}</strong>
+                                        <span>峰值天</span>
+                                    </div>
+                                    <div class="submission-trend-stat">
+                                        <strong>
+                                            <template v-if="submissionTrendStats.direction === 'up'">+{{ submissionTrendStats.delta }}</template>
+                                            <template v-else>{{ submissionTrendStats.delta }}</template>
+                                        </strong>
+                                        <span>较前一天</span>
+                                    </div>
+                                </div>
+
+                                <div class="submission-analysis-highlight">
+                                    峰值日期：<strong>{{ submissionTrendStats.peakLabel || '暂无' }}</strong>
+                                    ，最近一天：<strong>{{ submissionTrendStats.latestLabel || '暂无' }}</strong>
+                                </div>
+
+                                <div class="submission-trend-chart">
+                                    <div v-for="item in submissionTrendSeries" :key="item.key" class="submission-trend-column">
+                                        <strong class="submission-trend-count">{{ item.count }}</strong>
+                                        <div class="submission-trend-track">
+                                            <div class="submission-trend-bar" :style="{ height: `${item.barHeight}%` }"></div>
+                                        </div>
+                                        <small>{{ item.label }}</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="submission-insight-card">
+                                <div class="submission-insight-head">
+                                    <div>
                                         <strong>聚合概览</strong>
                                         <p class="mb-0 text-muted small">基于当前筛选结果自动汇总来源与页面分布。</p>
                                     </div>
