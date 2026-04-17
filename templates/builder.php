@@ -226,6 +226,59 @@
                     </div>
 
                     <div class="panel-section">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="section-title mb-0">提交记录</h6>
+                            <span class="status-pill">{{ safeSubmissionRecords.length }} 条</span>
+                        </div>
+
+                        <p class="section-desc mb-3">当前显示 {{ currentSubmissionScopeLabel }} 的最近表单提交。保存项目后，提交记录会更准确地绑定到项目 ID。</p>
+
+                        <div class="builder-mini-actions mb-3">
+                            <button @click="fetchSubmissions" type="button" class="btn btn-outline-secondary btn-sm" :disabled="isSubmissionListLoading">
+                                <span v-if="isSubmissionListLoading" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                <i v-else class="bi bi-arrow-clockwise"></i>
+                                刷新记录
+                            </button>
+                            <button @click="clearSubmissions" type="button" class="btn btn-outline-danger btn-sm" :disabled="isSubmissionClearing || safeSubmissionRecords.length === 0">
+                                <span v-if="isSubmissionClearing" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                <i v-else class="bi bi-eraser"></i>
+                                清空当前项目
+                            </button>
+                        </div>
+
+                        <div v-if="safeSubmissionRecords.length === 0" class="saved-empty-state">
+                            还没有提交记录。给按钮配置“提交表单”动作并打开预览后，就可以把当前页面表单数据投递到本地接口。
+                        </div>
+
+                        <div v-else class="submission-list">
+                            <div v-for="submission in safeSubmissionRecords" :key="submission.id" class="submission-card">
+                                <div class="submission-card-head">
+                                    <div>
+                                        <strong>#{{ submission.id }} {{ submission.page_title || submission.page_name }}</strong>
+                                        <p class="mb-0 text-muted small">{{ formatSubmissionMeta(submission) }}</p>
+                                    </div>
+                                    <button
+                                        @click="deleteSubmission(submission.id)"
+                                        type="button"
+                                        class="btn btn-outline-danger btn-sm"
+                                        :disabled="deletingSubmissionId === submission.id"
+                                    >
+                                        <span v-if="deletingSubmissionId === submission.id" class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                        <i v-else class="bi bi-trash3"></i>
+                                    </button>
+                                </div>
+
+                                <div class="submission-fields">
+                                    <div v-for="[fieldKey, fieldValue] in getSubmissionFieldEntries(submission)" :key="fieldKey" class="submission-field-row">
+                                        <span>{{ fieldKey }}</span>
+                                        <code>{{ Array.isArray(fieldValue) ? fieldValue.join(', ') : fieldValue }}</code>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel-section">
                         <h6 class="section-title">组件库</h6>
                         <p class="section-desc">拖到中间画布，或拖进容器组件中继续嵌套。组件支持复制、排序和撤销重做。</p>
                     </div>
@@ -586,6 +639,29 @@
                                     <button type="button" class="btn btn-outline-secondary btn-sm" @click="applySubmitResultPreset('keep')">保留表单</button>
                                     <button type="button" class="btn btn-outline-secondary btn-sm" @click="applySubmitResultPreset('reset')">提交后清空</button>
                                     <button type="button" class="btn btn-outline-secondary btn-sm" @click="applySubmitResultPreset('redirect')">提交后跳转</button>
+                                </div>
+                                <div class="mt-3">
+                                    <label class="form-label">提交接口</label>
+                                    <input
+                                        type="text"
+                                        class="form-control"
+                                        placeholder="/api/form-submissions"
+                                        :value="selectedElement.props.submitEndpoint || ''"
+                                        @input="updateElementProp('submitEndpoint', $event.target.value)"
+                                    >
+                                    <div class="form-text">留空时只做前端校验和成功提示；填写接口后会把当前页面表单数据提交出去。微信小程序建议填写完整 HTTPS 接口地址。</div>
+                                </div>
+                                <div class="mt-3">
+                                    <label class="form-label">请求方法</label>
+                                    <select
+                                        class="form-select"
+                                        :value="selectedElement.props.submitMethod || 'POST'"
+                                        @change="updateElementProp('submitMethod', $event.target.value)"
+                                    >
+                                        <option v-for="option in requestMethodOptions" :key="option.value" :value="option.value">
+                                            {{ option.label }}
+                                        </option>
+                                    </select>
                                 </div>
                                 <div class="form-check form-switch builder-switch mt-3">
                                     <input

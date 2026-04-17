@@ -21,6 +21,7 @@
 - 输入框支持手机号 / 邮箱 / 数字等字段类型与正则校验配置
 - 下拉选择、单选组、多选组支持选项配置、默认值和横向 / 纵向排布
 - 提交表单动作支持提交后清空和提交后跳转配置
+- 支持把表单提交数据发送到接口，并在构建器内查看当前项目的提交记录
 - 支持项目 JSON 导入与导出
 - 支持直接导出 H5 / 微信小程序 ZIP 压缩包
 - 支持实时预览 H5 结构
@@ -161,6 +162,13 @@ php -S localhost:8000 -t public
 - `GET /api/projects/{id}` 获取项目详情
 - `PUT /api/projects/{id}` 更新项目
 - `DELETE /api/projects/{id}` 删除项目
+
+### 表单提交
+
+- `GET /api/form-submissions` 获取提交记录，支持按 `project_id` / `project_name` / `page_name` 过滤
+- `POST /api/form-submissions` 接收表单提交数据
+- `POST /api/form-submissions/clear` 按项目范围清空提交记录
+- `DELETE /api/form-submissions/{id}` 删除单条提交记录
 
 ### 代码生成
 

@@ -1,7 +1,7 @@
 const { createApp } = Vue;
 
 const CONTAINER_TYPES = ['div', 'row'];
-const PROP_ORDER = ['content', 'text', 'label', 'required', 'placeholder', 'value', 'rows', 'fieldKey', 'inputType', 'options', 'optionLayout', 'validationPattern', 'validationMessage', 'height', 'src', 'alt', 'class', 'width', 'style', 'actionType', 'actionValue', 'submitResetForm', 'submitRedirectUrl'];
+const PROP_ORDER = ['content', 'text', 'label', 'required', 'placeholder', 'value', 'rows', 'fieldKey', 'inputType', 'options', 'optionLayout', 'validationPattern', 'validationMessage', 'height', 'src', 'alt', 'class', 'width', 'style', 'actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitResetForm', 'submitRedirectUrl'];
 const HISTORY_LIMIT = 60;
 const DRAG_KIND_COMPONENT = 'component';
 const DRAG_KIND_ELEMENT = 'existing-element';
@@ -18,6 +18,10 @@ const INPUT_TYPE_OPTIONS = [
     { value: 'tel', label: '手机号' },
     { value: 'email', label: '邮箱' },
     { value: 'number', label: '数字' }
+];
+const REQUEST_METHOD_OPTIONS = [
+    { value: 'POST', label: 'POST' },
+    { value: 'PUT', label: 'PUT' }
 ];
 const OPTION_LAYOUT_OPTIONS = [
     { value: 'vertical', label: '纵向排列' },
@@ -413,6 +417,7 @@ const SECTION_TEMPLATES = [
                                         required: true,
                                         placeholder: '请输入姓名',
                                         value: '',
+                                        fieldKey: 'contact_name',
                                         class: 'form-control',
                                         width: 'calc(50% - 8px)',
                                         style: ''
@@ -426,6 +431,10 @@ const SECTION_TEMPLATES = [
                                         required: true,
                                         placeholder: '请输入手机号',
                                         value: '',
+                                        fieldKey: 'contact_phone',
+                                        inputType: 'tel',
+                                        validationPattern: '^1\\d{10}$',
+                                        validationMessage: '请输入有效的 11 位手机号',
                                         class: 'form-control',
                                         width: 'calc(50% - 8px)',
                                         style: ''
@@ -442,6 +451,7 @@ const SECTION_TEMPLATES = [
                                 placeholder: '请描述你的业务场景或页面诉求',
                                 value: '',
                                 rows: '5',
+                                fieldKey: 'contact_requirement',
                                 class: 'form-control',
                                 width: '100%',
                                 style: 'margin-top: 16px;'
@@ -454,7 +464,13 @@ const SECTION_TEMPLATES = [
                                 text: '提交预约',
                                 class: 'btn btn-primary',
                                 width: '',
-                                style: 'margin-top: 18px;'
+                                style: 'margin-top: 18px;',
+                                actionType: 'submit',
+                                actionValue: '提交成功，我们会尽快联系你',
+                                submitEndpoint: '/api/form-submissions',
+                                submitMethod: 'POST',
+                                submitResetForm: false,
+                                submitRedirectUrl: ''
                             },
                             children: []
                         }
@@ -940,6 +956,7 @@ createApp({
             selectedElementId: null,
             newPageTitle: '',
             savedProjects: [],
+            submissionRecords: [],
             draftInfo: null,
             historyStack: [],
             historyIndex: -1,
@@ -954,6 +971,9 @@ createApp({
             isSavingProject: false,
             isProjectLoading: false,
             isProjectListLoading: false,
+            isSubmissionListLoading: false,
+            isSubmissionClearing: false,
+            deletingSubmissionId: null,
             isExportingH5: false,
             isExportingWechat: false,
             wechatCode: '',
@@ -988,6 +1008,7 @@ createApp({
             })),
             buttonActionOptions: BUTTON_ACTION_OPTIONS,
             inputTypeOptions: INPUT_TYPE_OPTIONS,
+            requestMethodOptions: REQUEST_METHOD_OPTIONS,
             optionLayoutOptions: OPTION_LAYOUT_OPTIONS,
             choiceOptionPresets: CHOICE_OPTION_PRESETS,
             themePresets: Object.entries(THEME_PRESETS).map(([key, preset]) => ({
@@ -1029,6 +1050,8 @@ createApp({
                 style: '内联样式',
                 actionType: '按钮动作',
                 actionValue: '动作内容',
+                submitEndpoint: '提交接口',
+                submitMethod: '请求方法',
                 submitResetForm: '提交后清空',
                 submitRedirectUrl: '提交后跳转'
             },
@@ -1054,6 +1077,8 @@ createApp({
                 style: 'text',
                 actionType: 'text',
                 actionValue: 'text',
+                submitEndpoint: 'text',
+                submitMethod: 'text',
                 submitResetForm: 'checkbox',
                 submitRedirectUrl: 'text'
             }
@@ -1086,6 +1111,9 @@ createApp({
         },
         safeSavedProjects() {
             return Array.isArray(this.savedProjects) ? this.savedProjects : [];
+        },
+        safeSubmissionRecords() {
+            return Array.isArray(this.submissionRecords) ? this.submissionRecords : [];
         },
         pageCount() {
             return this.safePages.length;
@@ -1154,6 +1182,13 @@ createApp({
 
             return this.selectedElement.props.optionLayout || 'vertical';
         },
+        currentSubmissionScopeLabel() {
+            if (this.projectId) {
+                return `项目 #${this.projectId}`;
+            }
+
+            return this.projectName || '未命名项目';
+        },
         editablePropFields() {
             if (!this.selectedElement || !this.selectedElement.props) {
                 return [];
@@ -1166,8 +1201,8 @@ createApp({
             ];
             const textareaKeys = new Set(['style', 'options']);
             const checkboxKeys = new Set(['required', 'submitResetForm']);
-            const hiddenKeys = new Set(['actionType', 'actionValue', 'submitRedirectUrl', 'submitResetForm']);
-            const selectKeys = new Set(['inputType', 'optionLayout']);
+            const hiddenKeys = new Set(['actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitRedirectUrl', 'submitResetForm']);
+            const selectKeys = new Set(['inputType', 'optionLayout', 'submitMethod']);
 
             if (this.selectedElement.type === 'text') {
                 textareaKeys.add('content');
@@ -1186,7 +1221,9 @@ createApp({
                 type: this.propInputTypes[key] || 'text',
                 options: key === 'inputType'
                     ? this.inputTypeOptions
-                    : (key === 'optionLayout' ? this.optionLayoutOptions : [])
+                    : (key === 'optionLayout'
+                        ? this.optionLayoutOptions
+                        : (key === 'submitMethod' ? this.requestMethodOptions : []))
             })).filter((field) => !hiddenKeys.has(field.key));
         },
         selectedElementType() {
@@ -1201,10 +1238,12 @@ createApp({
     },
     mounted() {
         this.fetchProjects(true);
+        this.fetchSubmissions(true);
         this.resetHistory();
         this.refreshLocalDraftInfo();
         window.addEventListener('keydown', this.handleKeydown);
         window.addEventListener('dragend', this.clearDropTarget);
+        window.builderSubmitAction = (trigger, config = {}) => this.handleBuilderSubmitAction(trigger, config);
 
         if (this.draftInfo) {
             this.setStatus('发现本地草稿，可在左侧项目管理区域恢复。', 'info');
@@ -1224,6 +1263,10 @@ createApp({
 
         if (this.draftTimer) {
             window.clearTimeout(this.draftTimer);
+        }
+
+        if (window.builderSubmitAction) {
+            delete window.builderSubmitAction;
         }
     },
     methods: {
@@ -1417,12 +1460,19 @@ createApp({
                 submit: '提交成功'
             };
 
-            this.applySelectedProps({
+            const nextProps = {
                 actionType,
                 actionValue: actionType === 'none'
                     ? ''
                     : (this.selectedElement && this.selectedElement.props.actionValue) || defaults[actionType] || ''
-            });
+            };
+
+            if (actionType === 'submit') {
+                nextProps.submitEndpoint = (this.selectedElement && this.selectedElement.props.submitEndpoint) || '/api/form-submissions';
+                nextProps.submitMethod = (this.selectedElement && this.selectedElement.props.submitMethod) || 'POST';
+            }
+
+            this.applySelectedProps(nextProps);
         },
         applyFieldPreset(className) {
             this.applySelectedProps({ class: className });
@@ -1517,13 +1567,19 @@ createApp({
         applySubmitResultPreset(type) {
             const presets = {
                 keep: {
+                    submitEndpoint: '/api/form-submissions',
+                    submitMethod: 'POST',
                     submitResetForm: false,
                     submitRedirectUrl: ''
                 },
                 reset: {
+                    submitEndpoint: '/api/form-submissions',
+                    submitMethod: 'POST',
                     submitResetForm: true
                 },
                 redirect: {
+                    submitEndpoint: '/api/form-submissions',
+                    submitMethod: 'POST',
                     submitRedirectUrl: this.projectType === 'wechat' ? '/pages/index/index' : 'https://example.com/success'
                 }
             };
@@ -1586,6 +1642,10 @@ createApp({
                 extras.push('提交后清空');
             }
 
+            if (actionType === 'submit' && props.submitEndpoint) {
+                extras.push(`提交到 ${props.submitEndpoint}`);
+            }
+
             if (actionType === 'submit' && props.submitRedirectUrl) {
                 extras.push(`跳转到 ${props.submitRedirectUrl}`);
             }
@@ -1597,6 +1657,45 @@ createApp({
             }
 
             return `${summary}（${extras.join('，')}）`;
+        },
+        getSubmissionQueryParams() {
+            const query = {};
+
+            if (this.projectId) {
+                query.project_id = this.projectId;
+            } else if (this.projectName) {
+                query.project_name = this.projectName;
+            }
+
+            return query;
+        },
+        buildQueryString(params = {}) {
+            const search = new URLSearchParams();
+
+            Object.entries(params).forEach(([key, value]) => {
+                if (value === undefined || value === null || value === '') {
+                    return;
+                }
+
+                search.set(key, String(value));
+            });
+
+            const query = search.toString();
+            return query ? `?${query}` : '';
+        },
+        formatSubmissionMeta(submission) {
+            const submittedAt = this.formatDateTime(submission.submitted_at || submission.created_at || '');
+            const pageTitle = submission.page_title || submission.page_name || '未命名页面';
+            const source = submission.source || 'unknown';
+
+            return `${submittedAt} · ${pageTitle} · ${source}`;
+        },
+        getSubmissionFieldEntries(submission) {
+            const formData = submission && submission.form_data && typeof submission.form_data === 'object'
+                ? submission.form_data
+                : {};
+
+            return Object.entries(formData);
         },
         getNodeByPath(root, path) {
             let current = root;
@@ -2216,6 +2315,8 @@ createApp({
                         style: '',
                         actionType: 'none',
                         actionValue: '',
+                        submitEndpoint: '/api/form-submissions',
+                        submitMethod: 'POST',
                         submitResetForm: false,
                         submitRedirectUrl: ''
                     };
@@ -2532,6 +2633,7 @@ createApp({
             this.wechatCode = '';
             this.h5Code = '';
             this.saveLocalDraft(true);
+            this.fetchSubmissions(true);
         },
         createNewProject() {
             const blankPage = this.createBlankPage();
@@ -2551,6 +2653,7 @@ createApp({
             this.h5Code = '';
             this.resetHistory();
             this.saveLocalDraft(true);
+            this.fetchSubmissions(true);
             this.setStatus('已切换到新的空白项目。', 'success');
         },
         buildExportPayload() {
@@ -2658,6 +2761,166 @@ createApp({
                 filename: matched ? matched[1] : 'builder-export.zip'
             };
         },
+        getPreviewFieldValue(field) {
+            const fieldKind = field && field.dataset ? field.dataset.fieldKind || '' : '';
+
+            if (fieldKind === 'checkbox-group') {
+                return Array.from(field.querySelectorAll('input[type="checkbox"]:checked')).map((input) => input.value);
+            }
+
+            if (fieldKind === 'radio-group') {
+                const checked = field.querySelector('input[type="radio"]:checked');
+                return checked ? checked.value : '';
+            }
+
+            return field && field.value !== undefined ? field.value : '';
+        },
+        isPreviewFieldEmpty(value) {
+            return Array.isArray(value) ? value.length === 0 : !String(value || '').trim();
+        },
+        validatePreviewField(field) {
+            const value = this.getPreviewFieldValue(field);
+            const label = field.dataset.label || '当前字段';
+
+            if (field.dataset.required === '1' && this.isPreviewFieldEmpty(value)) {
+                return `${label}为必填项`;
+            }
+
+            if (Array.isArray(value)) {
+                return '';
+            }
+
+            const stringValue = String(value || '').trim();
+            if (!stringValue) {
+                return '';
+            }
+
+            const pattern = field.dataset.pattern || '';
+            if (!pattern) {
+                return '';
+            }
+
+            try {
+                const regex = new RegExp(pattern);
+                if (!regex.test(stringValue)) {
+                    return field.dataset.validationMessage || `${label}格式不正确`;
+                }
+            } catch (error) {
+                return '';
+            }
+
+            return '';
+        },
+        focusPreviewField(field) {
+            if (field && typeof field.focus === 'function') {
+                field.focus();
+                return;
+            }
+
+            const target = field ? field.querySelector('input, textarea, select') : null;
+            if (target && typeof target.focus === 'function') {
+                target.focus();
+            }
+        },
+        resetPreviewField(field) {
+            const fieldKind = field && field.dataset ? field.dataset.fieldKind || '' : '';
+
+            if (fieldKind === 'checkbox-group') {
+                field.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+                    input.checked = false;
+                });
+                return;
+            }
+
+            if (fieldKind === 'radio-group') {
+                field.querySelectorAll('input[type="radio"]').forEach((input) => {
+                    input.checked = false;
+                });
+                return;
+            }
+
+            if (field) {
+                field.value = '';
+            }
+        },
+        resolvePreviewPageContext(trigger) {
+            const pageNode = trigger.closest('.page');
+            const pageName = pageNode && pageNode.id
+                ? String(pageNode.id).replace(/^page-/, '')
+                : (this.currentPage.name || 'index');
+            const page = this.safePages.find((item) => item.name === pageName) || this.currentPage;
+
+            return {
+                pageName,
+                pageTitle: page && page.title ? page.title : '首页'
+            };
+        },
+        buildSubmissionPayload(formData, pageContext = {}, source = 'builder-preview') {
+            return {
+                project_id: this.projectId || null,
+                project_name: this.projectName || '未命名项目',
+                project_type: this.projectType || 'h5',
+                page_name: pageContext.pageName || this.currentPage.name || 'index',
+                page_title: pageContext.pageTitle || this.currentPage.title || '首页',
+                source,
+                submitted_at: new Date().toISOString(),
+                form_data: formData
+            };
+        },
+        async submitBuilderPreviewForm(formData, pageContext, config = {}) {
+            const endpoint = config.submitEndpoint || '/api/form-submissions';
+            const method = config.submitMethod || 'POST';
+            const payload = this.buildSubmissionPayload(formData, pageContext, 'builder-preview');
+
+            return this.requestJson(endpoint, {
+                method,
+                body: payload
+            });
+        },
+        async handleBuilderSubmitAction(trigger, config = {}) {
+            const scope = trigger.closest('.page') || document;
+            const fields = Array.from(scope.querySelectorAll('[data-builder-field="true"]'));
+            const invalidField = fields.find((field) => this.validatePreviewField(field));
+
+            if (invalidField) {
+                const message = this.validatePreviewField(invalidField);
+                window.alert(message || '表单校验失败');
+                this.focusPreviewField(invalidField);
+                return false;
+            }
+
+            const formData = {};
+            fields.forEach((field) => {
+                const fieldKey = field.dataset.fieldKey || `field_${Object.keys(formData).length + 1}`;
+                formData[fieldKey] = this.getPreviewFieldValue(field);
+            });
+
+            const pageContext = this.resolvePreviewPageContext(trigger);
+
+            try {
+                if (config.submitEndpoint) {
+                    await this.submitBuilderPreviewForm(formData, pageContext, config);
+                    await this.fetchSubmissions(true);
+                }
+            } catch (error) {
+                window.alert(error.message || '提交失败，请检查接口配置');
+                return false;
+            }
+
+            if (config.resetForm) {
+                fields.forEach((field) => {
+                    this.resetPreviewField(field);
+                });
+            }
+
+            window.alert(config.successMessage || '提交成功');
+
+            if (config.redirectUrl) {
+                window.location.href = config.redirectUrl;
+            }
+
+            return true;
+        },
         triggerBlobDownload(blob, filename) {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -2715,6 +2978,65 @@ createApp({
                 this.isProjectListLoading = false;
             }
         },
+        async fetchSubmissions(silent = false) {
+            this.isSubmissionListLoading = true;
+
+            try {
+                const queryString = this.buildQueryString(this.getSubmissionQueryParams());
+                const json = await this.requestJson(`/api/form-submissions${queryString}`);
+                this.submissionRecords = Array.isArray(json.data) ? json.data : [];
+
+                if (!silent) {
+                    this.setStatus('提交记录已刷新。', 'success');
+                }
+            } catch (error) {
+                this.submissionRecords = [];
+
+                if (!silent) {
+                    this.setStatus(error.message || '获取提交记录失败。', 'danger');
+                }
+            } finally {
+                this.isSubmissionListLoading = false;
+            }
+        },
+        async clearSubmissions() {
+            const queryParams = this.getSubmissionQueryParams();
+
+            if (Object.keys(queryParams).length === 0) {
+                this.setStatus('请先保存项目或填写项目名称，再清空提交记录。', 'warning');
+                return;
+            }
+
+            this.isSubmissionClearing = true;
+
+            try {
+                const json = await this.requestJson('/api/form-submissions/clear', {
+                    method: 'POST',
+                    body: queryParams
+                });
+                await this.fetchSubmissions(true);
+                this.setStatus(json.message || '提交记录已清空。', 'warning');
+            } catch (error) {
+                this.setStatus(error.message || '清空提交记录失败。', 'danger');
+            } finally {
+                this.isSubmissionClearing = false;
+            }
+        },
+        async deleteSubmission(submissionId) {
+            this.deletingSubmissionId = submissionId;
+
+            try {
+                await this.requestJson(`/api/form-submissions/${submissionId}`, {
+                    method: 'DELETE'
+                });
+                this.submissionRecords = this.safeSubmissionRecords.filter((item) => String(item.id) !== String(submissionId));
+                this.setStatus('提交记录已删除。', 'warning');
+            } catch (error) {
+                this.setStatus(error.message || '删除提交记录失败。', 'danger');
+            } finally {
+                this.deletingSubmissionId = null;
+            }
+        },
         async saveProject() {
             this.flushHistoryCapture();
             this.isSavingProject = true;
@@ -2742,6 +3064,7 @@ createApp({
                 }
 
                 await this.fetchProjects(true);
+                await this.fetchSubmissions(true);
                 this.captureHistory();
                 this.saveLocalDraft(true);
                 this.setStatus(isUpdate ? '项目已更新。' : '项目已创建。', 'success');
@@ -2857,6 +3180,10 @@ createApp({
 
         if (this.historyTimer) {
             window.clearTimeout(this.historyTimer);
+        }
+
+        if (window.builderSubmitAction) {
+            delete window.builderSubmitAction;
         }
     }
 }).mount('#app');

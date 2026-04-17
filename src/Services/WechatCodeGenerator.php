@@ -17,7 +17,7 @@ class WechatCodeGenerator
         foreach ($pages as $page) {
             $pageFiles[] = [
                 'name' => $page['name'],
-                'js' => $this->generatePageJs($page),
+                'js' => $this->generatePageJs($page, $config),
                 'wxml' => $this->generatePageWxml($page),
                 'wxss' => $this->generatePageWxss($page),
                 'json' => $this->generatePageJson($page)
@@ -28,7 +28,7 @@ class WechatCodeGenerator
         foreach ($components as $component) {
             $componentFiles[] = [
                 'name' => $component['name'],
-                'js' => $this->generatePageJs($component),
+                'js' => $this->generatePageJs($component, $config),
                 'wxml' => $this->generatePageWxml($component),
                 'wxss' => $this->generatePageWxss($component),
                 'json' => $this->generateComponentJson($component)
@@ -190,7 +190,7 @@ page {
 }";
     }
     
-    private function generatePageJs($page)
+    private function generatePageJs($page, array $config = [])
     {
         $data = $page['data'] ?? [];
         if (!is_array($data)) {
@@ -220,6 +220,10 @@ page {
         $data['formSchemaMap'] = $formSchemaMap;
         $data['formDisplayValues'] = $formDisplayValues;
         $data['formCheckedMap'] = $formCheckedMap;
+        $data['builderProjectTitle'] = $config['title'] ?? '未命名项目';
+        $data['builderProjectType'] = 'wechat';
+        $data['builderPageName'] = $page['name'] ?? 'index';
+        $data['builderPageTitle'] = $page['title'] ?? '首页';
         $methods = $page['methods'] ?? [];
         
         $dataStr = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
@@ -302,6 +306,8 @@ page {
     const {
       actionType = 'none',
       actionValue = '',
+      submitEndpoint = '',
+      submitMethod = 'POST',
       submitReset = '0',
       submitRedirect = ''
     } = event.currentTarget.dataset || {};
@@ -352,40 +358,83 @@ page {
 
       console.log('builder form submit', values);
 
-      if (submitReset === '1') {
-        const resetData = {};
-        schema.forEach((field) => {
-          if (field.type === 'checkbox-group') {
-            resetData['formValues.' + field.key] = [];
-            const checkedMap = {};
-            (field.options || []).forEach((option) => {
-              checkedMap[option.checkedKey] = false;
+      const finalizeSubmit = () => {
+        if (submitReset === '1') {
+          const resetData = {};
+          schema.forEach((field) => {
+            if (field.type === 'checkbox-group') {
+              resetData['formValues.' + field.key] = [];
+              const checkedMap = {};
+              (field.options || []).forEach((option) => {
+                checkedMap[option.checkedKey] = false;
+              });
+              resetData['formCheckedMap.' + field.key] = checkedMap;
+              return;
+            }
+
+            resetData['formValues.' + field.key] = '';
+
+            if (field.type === 'select') {
+              resetData['formDisplayValues.' + field.key] = field.placeholder || '请选择';
+            }
+          });
+          this.setData(resetData);
+        }
+
+        wx.showToast({
+          title: actionValue || '提交成功',
+          icon: 'success'
+        });
+
+        if (submitRedirect) {
+          setTimeout(() => {
+            wx.navigateTo({
+              url: submitRedirect
             });
-            resetData['formCheckedMap.' + field.key] = checkedMap;
+          }, 300);
+        }
+      };
+
+      if (!submitEndpoint) {
+        finalizeSubmit();
+        return;
+      }
+
+      wx.request({
+        url: submitEndpoint,
+        method: submitMethod || 'POST',
+        header: {
+          'content-type': 'application/json'
+        },
+        data: {
+          project_name: this.data.builderProjectTitle || '未命名项目',
+          project_type: this.data.builderProjectType || 'wechat',
+          page_name: this.data.builderPageName || 'index',
+          page_title: this.data.builderPageTitle || '首页',
+          source: 'wechat',
+          submitted_at: new Date().toISOString(),
+          form_data: values
+        },
+        success: (response) => {
+          const json = response.data || {};
+
+          if (response.statusCode >= 400 || json.success === false) {
+            wx.showToast({
+              title: json.message || '提交失败',
+              icon: 'none'
+            });
             return;
           }
 
-          resetData['formValues.' + field.key] = '';
-
-          if (field.type === 'select') {
-            resetData['formDisplayValues.' + field.key] = field.placeholder || '请选择';
-          }
-        });
-        this.setData(resetData);
-      }
-
-      wx.showToast({
-        title: actionValue || '提交成功',
-        icon: 'success'
-      });
-
-      if (submitRedirect) {
-        setTimeout(() => {
-          wx.navigateTo({
-            url: submitRedirect
+          finalizeSubmit();
+        },
+        fail: () => {
+          wx.showToast({
+            title: '提交失败，请检查接口配置',
+            icon: 'none'
           });
-        }, 300);
-      }
+        }
+      });
 
       return;
     }
@@ -483,10 +532,12 @@ page {
                 $style = $props['style'] ?? '';
                 $actionType = $props['actionType'] ?? 'none';
                 $actionValue = htmlspecialchars($props['actionValue'] ?? '', ENT_QUOTES, 'UTF-8');
+                $submitEndpoint = htmlspecialchars($props['submitEndpoint'] ?? '', ENT_QUOTES, 'UTF-8');
+                $submitMethod = htmlspecialchars($props['submitMethod'] ?? 'POST', ENT_QUOTES, 'UTF-8');
                 $submitReset = !empty($props['submitResetForm']) ? '1' : '0';
                 $submitRedirect = htmlspecialchars($props['submitRedirectUrl'] ?? '', ENT_QUOTES, 'UTF-8');
                 $actionAttrs = $actionType !== 'none'
-                    ? " bindtap=\"handleAction\" data-action-type=\"{$actionType}\" data-action-value=\"{$actionValue}\" data-submit-reset=\"{$submitReset}\" data-submit-redirect=\"{$submitRedirect}\""
+                    ? " bindtap=\"handleAction\" data-action-type=\"{$actionType}\" data-action-value=\"{$actionValue}\" data-submit-endpoint=\"{$submitEndpoint}\" data-submit-method=\"{$submitMethod}\" data-submit-reset=\"{$submitReset}\" data-submit-redirect=\"{$submitRedirect}\""
                     : '';
                 return "<button class=\"{$class}\" style=\"{$style}\"{$actionAttrs}>{$text}</button>\n";
 

@@ -5,6 +5,7 @@ use DI\Container;
 use App\Controllers\BuilderController;
 use App\Controllers\ProjectController;
 use App\Controllers\CodeGeneratorController;
+use App\Controllers\FormSubmissionController;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
@@ -37,6 +38,10 @@ $app->post('/api/projects', [ProjectController::class, 'create']);
 $app->get('/api/projects/{id}', [ProjectController::class, 'get']);
 $app->put('/api/projects/{id}', [ProjectController::class, 'update']);
 $app->delete('/api/projects/{id}', [ProjectController::class, 'delete']);
+$app->get('/api/form-submissions', [FormSubmissionController::class, 'index']);
+$app->post('/api/form-submissions', [FormSubmissionController::class, 'create']);
+$app->post('/api/form-submissions/clear', [FormSubmissionController::class, 'clear']);
+$app->delete('/api/form-submissions/{id}', [FormSubmissionController::class, 'delete']);
 $app->post('/api/generate/wechat', [CodeGeneratorController::class, 'generateWechat']);
 $app->post('/api/generate/h5', [CodeGeneratorController::class, 'generateH5']);
 $app->post('/api/export/{type}', [CodeGeneratorController::class, 'exportBundle']);

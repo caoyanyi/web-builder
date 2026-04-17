@@ -273,6 +273,7 @@ CSS;
     {
         $pages = $config['pages'] ?? [];
         $pageData = json_encode($pages, JSON_UNESCAPED_UNICODE);
+        $projectTitle = json_encode($config['title'] ?? '未命名项目', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         
         $template = <<<'JS'
 // 主应用逻辑
@@ -280,6 +281,7 @@ class App {
     constructor() {
         this.currentPage = null;
         this.pages = __PAGE_DATA__;
+        this.projectTitle = __PROJECT_TITLE__;
         this.init();
     }
     
@@ -314,6 +316,8 @@ class App {
         if (actionType === 'submit') {
             return `window.builderSubmitAction(this, ${JSON.stringify({
                 successMessage: actionValue || '提交成功',
+                submitEndpoint: props.submitEndpoint || '',
+                submitMethod: props.submitMethod || 'POST',
                 resetForm: Boolean(props.submitResetForm),
                 redirectUrl: props.submitRedirectUrl || ''
             })})`;
@@ -429,7 +433,38 @@ class App {
         return '';
     }
 
-    handleSubmitAction(trigger, config = {}) {
+    async submitFormData(formData, config = {}) {
+        if (!config.submitEndpoint) {
+            return { success: true };
+        }
+
+        const payload = {
+            project_name: this.projectTitle || '未命名项目',
+            project_type: 'h5',
+            page_name: this.currentPage?.name || 'index',
+            page_title: this.currentPage?.title || '首页',
+            source: 'h5',
+            submitted_at: new Date().toISOString(),
+            form_data: formData
+        };
+
+        const response = await fetch(config.submitEndpoint, {
+            method: config.submitMethod || 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        const json = await response.json().catch(() => ({}));
+
+        if (!response.ok || json.success === false) {
+            throw new Error(json.message || '提交失败，请检查接口配置');
+        }
+
+        return json;
+    }
+
+    async handleSubmitAction(trigger, config = {}) {
         const scope = trigger.closest('.page') || document;
         const fields = Array.from(scope.querySelectorAll('[data-builder-field="true"]'));
         const invalidField = fields.find((field) => this.validateField(field));
@@ -448,6 +483,13 @@ class App {
         });
 
         console.log('builder form submit', formData);
+
+        try {
+            await this.submitFormData(formData, config);
+        } catch (error) {
+            alert(error.message || '提交失败');
+            return false;
+        }
 
         if (config.resetForm) {
             fields.forEach((field) => {
@@ -587,7 +629,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 JS;
 
-        return str_replace('__PAGE_DATA__', $pageData, $template);
+        return str_replace(
+            ['__PAGE_DATA__', '__PROJECT_TITLE__'],
+            [$pageData, $projectTitle],
+            $template
+        );
     }
     
     private function generatePageHtml($page)
@@ -806,6 +852,8 @@ JS;
             $message = $actionValue ?: '提交成功';
             $config = [
                 'successMessage' => $message,
+                'submitEndpoint' => $props['submitEndpoint'] ?? '',
+                'submitMethod' => $props['submitMethod'] ?? 'POST',
                 'resetForm' => !empty($props['submitResetForm']),
                 'redirectUrl' => $props['submitRedirectUrl'] ?? '',
             ];
