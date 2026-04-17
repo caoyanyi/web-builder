@@ -1213,6 +1213,29 @@ body {
     color: var(--builder-danger);
 }
 
+.builder-field-meta {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.45rem;
+}
+
+.builder-field-help,
+.builder-field-count {
+    color: var(--builder-text-muted);
+    font-size: 0.8rem;
+    line-height: 1.55;
+}
+
+.builder-field-help {
+    flex: 1;
+}
+
+.builder-field-count {
+    white-space: nowrap;
+}
+
 .builder-render-image {
     display: block;
     max-width: 100%;

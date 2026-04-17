@@ -398,6 +398,29 @@ body {
     font-size: 0.84rem;
 }
 
+.builder-field-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-top: 0.4rem;
+}
+
+.builder-field-help,
+.builder-field-count {
+    color: var(--builder-text-muted);
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.builder-field-help {
+    flex: 1;
+}
+
+.builder-field-count {
+    white-space: nowrap;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
     .navigation ul {
@@ -447,6 +470,7 @@ class App {
             if (event.target && typeof event.target.closest === 'function' && event.target.closest('[data-builder-field="true"]')) {
                 const scope = event.target.closest('.page') || document;
                 this.refreshConditionalVisibility(scope);
+                this.refreshFieldAssistState(scope);
                 this.refreshSummaryState(scope);
             }
         });
@@ -455,6 +479,7 @@ class App {
             if (event.target && typeof event.target.closest === 'function' && event.target.closest('[data-builder-field="true"]')) {
                 const scope = event.target.closest('.page') || document;
                 this.refreshConditionalVisibility(scope);
+                this.refreshFieldAssistState(scope);
                 this.refreshSummaryState(scope);
             }
         });
@@ -569,6 +594,37 @@ class App {
         return `<div class="builder-form-summary ${props.class || ''}" style="${props.width ? `width:${props.width};` : ''}${props.style || ''}" data-summary-enabled="1"><div class="builder-form-summary-head"><strong>${this.escapeHtmlAttribute(props.summaryTitle || '请确认以下信息')}</strong><span data-summary-count>正在汇总</span></div><div class="builder-form-summary-list" data-summary-list></div><div class="builder-form-summary-empty" data-summary-empty-state>${this.escapeHtmlAttribute(props.emptyText || '当前还没有可汇总的表单字段')}</div></div>`;
     }
 
+    buildFieldAssistHtml(props = {}, fieldKey = '', currentValue = '', fieldType = '') {
+        const helperText = String(props.helperText || '').trim();
+        const assistKey = this.escapeHtmlAttribute(fieldKey || 'field');
+        const maxLength = Number.parseInt(String(props.maxLength || ''), 10);
+        const showCounter = Number.isFinite(maxLength) && maxLength > 0 && ['input', 'textarea'].includes(fieldType);
+
+        if (!helperText && !showCounter) {
+            return '';
+        }
+
+        const counterText = showCounter ? `${String(currentValue || '').length}/${maxLength}` : '';
+
+        return `<div class="builder-field-meta">${helperText ? `<span class="builder-field-help" id="${assistKey}-help">${this.escapeHtmlAttribute(helperText)}</span>` : ''}${showCounter ? `<span class="builder-field-count" id="${assistKey}-count" data-field-counter="${assistKey}">${counterText}</span>` : ''}</div>`;
+    }
+
+    buildFieldAssistDescriptor(fieldKey = '', props = {}, fieldType = '') {
+        const assistKey = this.escapeHtmlAttribute(fieldKey || 'field');
+        const ids = [];
+
+        if (String(props.helperText || '').trim()) {
+            ids.push(`${assistKey}-help`);
+        }
+
+        const maxLength = Number.parseInt(String(props.maxLength || ''), 10);
+        if (Number.isFinite(maxLength) && maxLength > 0 && ['input', 'textarea'].includes(fieldType)) {
+            ids.push(`${assistKey}-count`);
+        }
+
+        return ids.join(' ');
+    }
+
     getFieldValue(field) {
         const fieldKind = field.dataset.fieldKind || '';
 
@@ -621,6 +677,10 @@ class App {
         return Array.from((scope || document).querySelectorAll('[data-builder-field="true"]'));
     }
 
+    getFieldCounters(scope = document) {
+        return Array.from((scope || document).querySelectorAll('[data-field-counter]'));
+    }
+
     isFieldConditionVisible(field) {
         return !(field && typeof field.closest === 'function' && field.closest('[data-conditional-hidden="1"]'));
     }
@@ -654,6 +714,32 @@ class App {
             label: field.dataset.label || field.dataset.fieldKey || `字段 ${index + 1}`,
             value: this.getFieldDisplayValue(field)
         }));
+    }
+
+    refreshFieldAssistState(scope = document) {
+        const pageNode = this.getPageNode(scope);
+        const fields = this.getFormFields(pageNode);
+        const counters = this.getFieldCounters(pageNode);
+
+        if (fields.length === 0 || counters.length === 0) {
+            return;
+        }
+
+        counters.forEach((counter) => {
+            const targetKey = counter.dataset.fieldCounter || '';
+            const field = fields.find((item) => (item.dataset.counterTarget || item.dataset.fieldKey || '') === targetKey);
+
+            if (!field) {
+                return;
+            }
+
+            const maxLength = Number.parseInt(String(field.dataset.maxLength || ''), 10);
+            if (!Number.isFinite(maxLength) || maxLength <= 0) {
+                return;
+            }
+
+            counter.textContent = `${String(this.getFieldValue(field) || '').length}/${maxLength}`;
+        });
     }
 
     getPageNode(scope = document) {
@@ -827,6 +913,7 @@ class App {
 
         if (direction === 'prev') {
             this.refreshStepState(scope, Math.max(1, currentStep - 1));
+            this.refreshFieldAssistState(scope);
             this.refreshSummaryState(scope);
             return false;
         }
@@ -836,6 +923,7 @@ class App {
         }
 
         this.refreshStepState(scope, Math.min(totalSteps, currentStep + 1));
+        this.refreshFieldAssistState(scope);
         this.refreshSummaryState(scope);
         return false;
     }
@@ -891,6 +979,28 @@ class App {
         const value = String(rawValue || '').trim();
         if (!value) {
             return '';
+        }
+
+        const minLength = Number.parseInt(String(field.dataset.minLength || ''), 10);
+        if (Number.isFinite(minLength) && minLength > 0 && value.length < minLength) {
+            return `${label}至少输入 ${minLength} 个字符`;
+        }
+
+        const maxLength = Number.parseInt(String(field.dataset.maxLength || ''), 10);
+        if (Number.isFinite(maxLength) && maxLength > 0 && value.length > maxLength) {
+            return `${label}最多输入 ${maxLength} 个字符`;
+        }
+
+        const minValue = field.dataset.minValue !== '' ? Number(field.dataset.minValue) : NaN;
+        const maxValue = field.dataset.maxValue !== '' ? Number(field.dataset.maxValue) : NaN;
+        const numericValue = Number(value);
+
+        if (Number.isFinite(minValue) && Number.isFinite(numericValue) && numericValue < minValue) {
+            return `${label}不能小于 ${minValue}`;
+        }
+
+        if (Number.isFinite(maxValue) && Number.isFinite(numericValue) && numericValue > maxValue) {
+            return `${label}不能大于 ${maxValue}`;
         }
 
         const pattern = field.dataset.pattern || '';
@@ -1021,6 +1131,7 @@ class App {
                 this.resetField(field);
             });
             this.refreshConditionalVisibility(scope);
+            this.refreshFieldAssistState(scope);
             this.refreshStepState(scope, 1);
             this.refreshSummaryState(scope);
         }
@@ -1048,6 +1159,7 @@ class App {
         app.innerHTML = this.generatePageHtml(page);
         this.loadPageScripts(page);
         this.refreshConditionalVisibility(app.querySelector('.page') || app);
+        this.refreshFieldAssistState(app.querySelector('.page') || app);
         this.refreshStepState(app.querySelector('.page') || app, 1);
         this.refreshSummaryState(app.querySelector('.page') || app);
     }
@@ -1099,12 +1211,16 @@ class App {
 
             case 'input':
                 const inputLabel = props.label ? `<label style="display:block;margin-bottom:6px;font-weight:600;">${props.label}${props.required ? '<span style="color:#c2410c;"> *</span>' : ''}</label>` : '';
-                html = `<div style="${props.width ? `width:${props.width};` : ''}">${inputLabel}<input type="${props.inputType || 'text'}" data-builder-field="true" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || props.placeholder || '输入框')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'input'}`)}" data-pattern="${this.escapeHtmlAttribute(props.validationPattern || '')}" data-validation-message="${this.escapeHtmlAttribute(props.validationMessage || '')}" class="${props.class || ''}" style="${props.style || ''}" placeholder="${props.placeholder || ''}" value="${props.value || ''}"></div>`;
+                const inputFieldKey = this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'input'}`);
+                const inputAssistDescriptor = this.buildFieldAssistDescriptor(props.fieldKey || `field_${element.id || 'input'}`, props, 'input');
+                html = `<div style="${props.width ? `width:${props.width};` : ''}">${inputLabel ? inputLabel.replace('<label ', `<label for="${inputFieldKey}" `) : ''}<input id="${inputFieldKey}" type="${props.inputType || 'text'}" data-builder-field="true" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || props.placeholder || '输入框')}" data-field-key="${inputFieldKey}" data-counter-target="${inputFieldKey}" data-input-type="${this.escapeHtmlAttribute(props.inputType || 'text')}" data-min-length="${this.escapeHtmlAttribute(props.minLength || '')}" data-max-length="${this.escapeHtmlAttribute(props.maxLength || '')}" data-min-value="${this.escapeHtmlAttribute(props.minValue || '')}" data-max-value="${this.escapeHtmlAttribute(props.maxValue || '')}" data-pattern="${this.escapeHtmlAttribute(props.validationPattern || '')}" data-validation-message="${this.escapeHtmlAttribute(props.validationMessage || '')}" minlength="${this.escapeHtmlAttribute(props.minLength || '')}" maxlength="${this.escapeHtmlAttribute(props.maxLength || '')}" min="${this.escapeHtmlAttribute(props.minValue || '')}" max="${this.escapeHtmlAttribute(props.maxValue || '')}"${inputAssistDescriptor ? ` aria-describedby="${inputAssistDescriptor}"` : ''} class="${props.class || ''}" style="${props.style || ''}" placeholder="${props.placeholder || ''}" value="${props.value || ''}">${this.buildFieldAssistHtml(props, props.fieldKey || `field_${element.id || 'input'}`, props.value || '', 'input')}</div>`;
                 break;
 
             case 'textarea':
                 const textareaLabel = props.label ? `<label style="display:block;margin-bottom:6px;font-weight:600;">${props.label}${props.required ? '<span style="color:#c2410c;"> *</span>' : ''}</label>` : '';
-                html = `<div style="${props.width ? `width:${props.width};` : ''}">${textareaLabel}<textarea data-builder-field="true" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || props.placeholder || '文本域')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'textarea'}`)}" data-pattern="${this.escapeHtmlAttribute(props.validationPattern || '')}" data-validation-message="${this.escapeHtmlAttribute(props.validationMessage || '')}" class="${props.class || ''}" style="${props.style || ''}" rows="${props.rows || '4'}" placeholder="${props.placeholder || ''}">${props.value || ''}</textarea></div>`;
+                const textareaFieldKey = this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'textarea'}`);
+                const textareaAssistDescriptor = this.buildFieldAssistDescriptor(props.fieldKey || `field_${element.id || 'textarea'}`, props, 'textarea');
+                html = `<div style="${props.width ? `width:${props.width};` : ''}">${textareaLabel ? textareaLabel.replace('<label ', `<label for="${textareaFieldKey}" `) : ''}<textarea id="${textareaFieldKey}" data-builder-field="true" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || props.placeholder || '文本域')}" data-field-key="${textareaFieldKey}" data-counter-target="${textareaFieldKey}" data-min-length="${this.escapeHtmlAttribute(props.minLength || '')}" data-max-length="${this.escapeHtmlAttribute(props.maxLength || '')}" data-pattern="${this.escapeHtmlAttribute(props.validationPattern || '')}" data-validation-message="${this.escapeHtmlAttribute(props.validationMessage || '')}" minlength="${this.escapeHtmlAttribute(props.minLength || '')}" maxlength="${this.escapeHtmlAttribute(props.maxLength || '')}"${textareaAssistDescriptor ? ` aria-describedby="${textareaAssistDescriptor}"` : ''} class="${props.class || ''}" style="${props.style || ''}" rows="${props.rows || '4'}" placeholder="${props.placeholder || ''}">${props.value || ''}</textarea>${this.buildFieldAssistHtml(props, props.fieldKey || `field_${element.id || 'textarea'}`, props.value || '', 'textarea')}</div>`;
                 break;
 
             case 'select':
@@ -1113,7 +1229,9 @@ class App {
                 const selectMarkup = [`<option value="">${this.escapeHtmlAttribute(props.placeholder || '请选择')}</option>`]
                     .concat(selectOptions.map((option) => `<option value="${this.escapeHtmlAttribute(option.value)}"${String(props.value || '') === option.value ? ' selected' : ''}>${this.escapeHtmlAttribute(option.label)}</option>`))
                     .join('');
-                html = `<div style="${props.width ? `width:${props.width};` : ''}">${selectLabel}<select data-builder-field="true" data-field-kind="select" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || props.placeholder || '下拉选择')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'select'}`)}" class="${props.class || 'form-control'}" style="${props.style || ''}">${selectMarkup}</select></div>`;
+                const selectFieldKey = this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'select'}`);
+                const selectAssistDescriptor = this.buildFieldAssistDescriptor(props.fieldKey || `field_${element.id || 'select'}`, props, 'select');
+                html = `<div style="${props.width ? `width:${props.width};` : ''}">${selectLabel ? selectLabel.replace('<label ', `<label for="${selectFieldKey}" `) : ''}<select id="${selectFieldKey}" data-builder-field="true" data-field-kind="select" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || props.placeholder || '下拉选择')}" data-field-key="${selectFieldKey}"${selectAssistDescriptor ? ` aria-describedby="${selectAssistDescriptor}"` : ''} class="${props.class || 'form-control'}" style="${props.style || ''}">${selectMarkup}</select>${this.buildFieldAssistHtml(props, props.fieldKey || `field_${element.id || 'select'}`, props.value || '', 'select')}</div>`;
                 break;
 
             case 'radio-group':
@@ -1123,7 +1241,7 @@ class App {
                 const radioMarkup = radioOptions.length > 0
                     ? radioOptions.map((option) => `<label class="choice-option"><input type="radio" name="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'radio'}`)}" value="${this.escapeHtmlAttribute(option.value)}"${String(props.value || '') === option.value ? ' checked' : ''}> <span>${this.escapeHtmlAttribute(option.label)}</span></label>`).join('')
                     : '<div class="text-muted">请先配置选项</div>';
-                html = `<div style="${props.width ? `width:${props.width};` : ''}">${radioLabel}<div data-builder-field="true" data-field-kind="radio-group" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || '单选组')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'radio'}`)}" class="${[radioLayoutClass, props.class || ''].filter(Boolean).join(' ')}" style="${props.style || ''}">${radioMarkup}</div></div>`;
+                html = `<div style="${props.width ? `width:${props.width};` : ''}">${radioLabel}<div data-builder-field="true" data-field-kind="radio-group" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || '单选组')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'radio'}`)}" class="${[radioLayoutClass, props.class || ''].filter(Boolean).join(' ')}" style="${props.style || ''}">${radioMarkup}</div>${this.buildFieldAssistHtml(props, props.fieldKey || `field_${element.id || 'radio'}`, props.value || '', 'radio-group')}</div>`;
                 break;
 
             case 'checkbox-group':
@@ -1134,7 +1252,7 @@ class App {
                 const checkboxMarkup = checkboxOptions.length > 0
                     ? checkboxOptions.map((option) => `<label class="choice-option"><input type="checkbox" value="${this.escapeHtmlAttribute(option.value)}"${checkboxValues.includes(option.value) ? ' checked' : ''}> <span>${this.escapeHtmlAttribute(option.label)}</span></label>`).join('')
                     : '<div class="text-muted">请先配置选项</div>';
-                html = `<div style="${props.width ? `width:${props.width};` : ''}">${checkboxLabel}<div data-builder-field="true" data-field-kind="checkbox-group" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || '多选组')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'checkbox'}`)}" class="${[checkboxLayoutClass, props.class || ''].filter(Boolean).join(' ')}" style="${props.style || ''}">${checkboxMarkup}</div></div>`;
+                html = `<div style="${props.width ? `width:${props.width};` : ''}">${checkboxLabel}<div data-builder-field="true" data-field-kind="checkbox-group" data-required="${props.required ? '1' : '0'}" data-label="${this.escapeHtmlAttribute(props.label || '多选组')}" data-field-key="${this.escapeHtmlAttribute(props.fieldKey || `field_${element.id || 'checkbox'}`)}" class="${[checkboxLayoutClass, props.class || ''].filter(Boolean).join(' ')}" style="${props.style || ''}">${checkboxMarkup}</div>${this.buildFieldAssistHtml(props, props.fieldKey || `field_${element.id || 'checkbox'}`, props.value || '', 'checkbox-group')}</div>`;
                 break;
 
             case 'spacer':
@@ -1310,12 +1428,19 @@ JS;
                 $inputType = htmlspecialchars($props['inputType'] ?? 'text', ENT_QUOTES, 'UTF-8');
                 $fieldKey = htmlspecialchars($props['fieldKey'] ?? ('field_' . preg_replace('/[^\w-]+/', '_', (string) ($element['id'] ?? 'input'))), ENT_QUOTES, 'UTF-8');
                 $fieldLabel = htmlspecialchars($label ?: ($placeholder ?: '输入框'), ENT_QUOTES, 'UTF-8');
+                $minLength = htmlspecialchars((string) ($props['minLength'] ?? ''), ENT_QUOTES, 'UTF-8');
+                $maxLength = htmlspecialchars((string) ($props['maxLength'] ?? ''), ENT_QUOTES, 'UTF-8');
+                $minValue = htmlspecialchars((string) ($props['minValue'] ?? ''), ENT_QUOTES, 'UTF-8');
+                $maxValue = htmlspecialchars((string) ($props['maxValue'] ?? ''), ENT_QUOTES, 'UTF-8');
                 $validationPattern = htmlspecialchars($props['validationPattern'] ?? '', ENT_QUOTES, 'UTF-8');
                 $validationMessage = htmlspecialchars($props['validationMessage'] ?? '', ENT_QUOTES, 'UTF-8');
                 $wrapperStyle = $width ? "width: {$width};" : '';
-                $labelHtml = $label ? "    <label style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
+                $labelHtml = $label ? "    <label for=\"{$fieldKey}\" style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
                 $requiredAttr = !empty($props['required']) ? '1' : '0';
-                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <input type=\"{$inputType}\" data-builder-field=\"true\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" data-pattern=\"{$validationPattern}\" data-validation-message=\"{$validationMessage}\" class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{$value}\">\n    </div>\n";
+                $assistDescriptor = $this->buildFieldAssistDescriptor($props, $fieldKey, 'input');
+                $assistDescriptorAttr = $assistDescriptor !== '' ? " aria-describedby=\"{$assistDescriptor}\"" : '';
+                $assistHtml = $this->buildFieldAssistMarkup($props, htmlspecialchars((string) ($props['fieldKey'] ?? ('field_' . preg_replace('/[^\w-]+/', '_', (string) ($element['id'] ?? 'input')))), ENT_QUOTES, 'UTF-8'), $value, 'input');
+                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <input id=\"{$fieldKey}\" type=\"{$inputType}\" data-builder-field=\"true\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" data-counter-target=\"{$fieldKey}\" data-input-type=\"{$inputType}\" data-min-length=\"{$minLength}\" data-max-length=\"{$maxLength}\" data-min-value=\"{$minValue}\" data-max-value=\"{$maxValue}\" data-pattern=\"{$validationPattern}\" data-validation-message=\"{$validationMessage}\" minlength=\"{$minLength}\" maxlength=\"{$maxLength}\" min=\"{$minValue}\" max=\"{$maxValue}\"{$assistDescriptorAttr} class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{$value}\">\n{$assistHtml}    </div>\n";
                 break;
 
             case 'textarea':
@@ -1329,12 +1454,17 @@ JS;
                 $style = $props['style'] ?? '';
                 $fieldKey = htmlspecialchars($props['fieldKey'] ?? ('field_' . preg_replace('/[^\w-]+/', '_', (string) ($element['id'] ?? 'textarea'))), ENT_QUOTES, 'UTF-8');
                 $fieldLabel = htmlspecialchars($label ?: ($placeholder ?: '文本域'), ENT_QUOTES, 'UTF-8');
+                $minLength = htmlspecialchars((string) ($props['minLength'] ?? ''), ENT_QUOTES, 'UTF-8');
+                $maxLength = htmlspecialchars((string) ($props['maxLength'] ?? ''), ENT_QUOTES, 'UTF-8');
                 $validationPattern = htmlspecialchars($props['validationPattern'] ?? '', ENT_QUOTES, 'UTF-8');
                 $validationMessage = htmlspecialchars($props['validationMessage'] ?? '', ENT_QUOTES, 'UTF-8');
                 $wrapperStyle = $width ? "width: {$width};" : '';
-                $labelHtml = $label ? "    <label style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
+                $labelHtml = $label ? "    <label for=\"{$fieldKey}\" style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
                 $requiredAttr = !empty($props['required']) ? '1' : '0';
-                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <textarea data-builder-field=\"true\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" data-pattern=\"{$validationPattern}\" data-validation-message=\"{$validationMessage}\" class=\"{$class}\" style=\"{$style}\" rows=\"{$rows}\" placeholder=\"{$placeholder}\">{$value}</textarea>\n    </div>\n";
+                $assistDescriptor = $this->buildFieldAssistDescriptor($props, $fieldKey, 'textarea');
+                $assistDescriptorAttr = $assistDescriptor !== '' ? " aria-describedby=\"{$assistDescriptor}\"" : '';
+                $assistHtml = $this->buildFieldAssistMarkup($props, htmlspecialchars((string) ($props['fieldKey'] ?? ('field_' . preg_replace('/[^\w-]+/', '_', (string) ($element['id'] ?? 'textarea')))), ENT_QUOTES, 'UTF-8'), $value, 'textarea');
+                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <textarea id=\"{$fieldKey}\" data-builder-field=\"true\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" data-counter-target=\"{$fieldKey}\" data-min-length=\"{$minLength}\" data-max-length=\"{$maxLength}\" data-pattern=\"{$validationPattern}\" data-validation-message=\"{$validationMessage}\" minlength=\"{$minLength}\" maxlength=\"{$maxLength}\"{$assistDescriptorAttr} class=\"{$class}\" style=\"{$style}\" rows=\"{$rows}\" placeholder=\"{$placeholder}\">{$value}</textarea>\n{$assistHtml}    </div>\n";
                 break;
 
             case 'select':
@@ -1347,10 +1477,13 @@ JS;
                 $fieldKey = htmlspecialchars($props['fieldKey'] ?? ('field_' . preg_replace('/[^\w-]+/', '_', (string) ($element['id'] ?? 'select'))), ENT_QUOTES, 'UTF-8');
                 $fieldLabel = htmlspecialchars($label ?: ($props['placeholder'] ?? '下拉选择'), ENT_QUOTES, 'UTF-8');
                 $wrapperStyle = $width ? "width: {$width};" : '';
-                $labelHtml = $label ? "    <label style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
+                $labelHtml = $label ? "    <label for=\"{$fieldKey}\" style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
                 $requiredAttr = !empty($props['required']) ? '1' : '0';
+                $assistDescriptor = $this->buildFieldAssistDescriptor($props, $fieldKey, 'select');
+                $assistDescriptorAttr = $assistDescriptor !== '' ? " aria-describedby=\"{$assistDescriptor}\"" : '';
                 $optionsHtml = $this->buildSelectOptionsHtml($props['options'] ?? '', $props['value'] ?? '', $placeholder);
-                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <select data-builder-field=\"true\" data-field-kind=\"select\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" class=\"{$class}\" style=\"{$style}\">{$optionsHtml}</select>\n    </div>\n";
+                $assistHtml = $this->buildFieldAssistMarkup($props, htmlspecialchars((string) ($props['fieldKey'] ?? ('field_' . preg_replace('/[^\w-]+/', '_', (string) ($element['id'] ?? 'select')))), ENT_QUOTES, 'UTF-8'), $props['value'] ?? '', 'select');
+                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <select id=\"{$fieldKey}\" data-builder-field=\"true\" data-field-kind=\"select\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\"{$assistDescriptorAttr} class=\"{$class}\" style=\"{$style}\">{$optionsHtml}</select>\n{$assistHtml}    </div>\n";
                 break;
 
             case 'radio-group':
@@ -1365,7 +1498,8 @@ JS;
                 $labelHtml = $label ? "    <label style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
                 $requiredAttr = !empty($props['required']) ? '1' : '0';
                 $optionsHtml = $this->buildChoiceGroupHtml('radio', $props['options'] ?? '', $props['value'] ?? '', $fieldKey);
-                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <div data-builder-field=\"true\" data-field-kind=\"radio-group\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" class=\"{$class}\" style=\"{$style}\">{$optionsHtml}</div>\n    </div>\n";
+                $assistHtml = $this->buildFieldAssistMarkup($props, htmlspecialchars((string) ($props['fieldKey'] ?? ('field_' . preg_replace('/[^\w-]+/', '_', (string) ($element['id'] ?? 'radio')))), ENT_QUOTES, 'UTF-8'), $props['value'] ?? '', 'radio-group');
+                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <div data-builder-field=\"true\" data-field-kind=\"radio-group\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" class=\"{$class}\" style=\"{$style}\">{$optionsHtml}</div>\n{$assistHtml}    </div>\n";
                 break;
 
             case 'checkbox-group':
@@ -1380,7 +1514,8 @@ JS;
                 $labelHtml = $label ? "    <label style=\"display:block;margin-bottom:6px;font-weight:600;\">{$label}{$required}</label>\n" : '';
                 $requiredAttr = !empty($props['required']) ? '1' : '0';
                 $optionsHtml = $this->buildChoiceGroupHtml('checkbox', $props['options'] ?? '', $props['value'] ?? '', $fieldKey);
-                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <div data-builder-field=\"true\" data-field-kind=\"checkbox-group\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" class=\"{$class}\" style=\"{$style}\">{$optionsHtml}</div>\n    </div>\n";
+                $assistHtml = $this->buildFieldAssistMarkup($props, htmlspecialchars((string) ($props['fieldKey'] ?? ('field_' . preg_replace('/[^\w-]+/', '_', (string) ($element['id'] ?? 'checkbox')))), ENT_QUOTES, 'UTF-8'), $props['value'] ?? '', 'checkbox-group');
+                $html = "    <div style=\"{$wrapperStyle}\">\n{$labelHtml}    <div data-builder-field=\"true\" data-field-kind=\"checkbox-group\" data-required=\"{$requiredAttr}\" data-label=\"{$fieldLabel}\" data-field-key=\"{$fieldKey}\" class=\"{$class}\" style=\"{$style}\">{$optionsHtml}</div>\n{$assistHtml}    </div>\n";
                 break;
 
             case 'spacer':
@@ -1487,6 +1622,43 @@ JS;
         $emptyText = htmlspecialchars((string) ($props['emptyText'] ?? '当前还没有可汇总的表单字段'), ENT_QUOTES, 'UTF-8');
 
         return "    <div class=\"builder-form-summary {$class}\" style=\"{$style}\" data-summary-enabled=\"1\">\n        <div class=\"builder-form-summary-head\"><strong>{$summaryTitle}</strong><span data-summary-count>正在汇总</span></div>\n        <div class=\"builder-form-summary-list\" data-summary-list></div>\n        <div class=\"builder-form-summary-empty\" data-summary-empty-state>{$emptyText}</div>\n    </div>\n";
+    }
+
+    private function buildFieldAssistMarkup(array $props, string $fieldKey, string $currentValue = '', string $fieldType = ''): string
+    {
+        $helperText = trim((string) ($props['helperText'] ?? ''));
+        $maxLength = (int) ($props['maxLength'] ?? 0);
+        $showCounter = in_array($fieldType, ['input', 'textarea'], true) && $maxLength > 0;
+
+        if ($helperText === '' && !$showCounter) {
+            return '';
+        }
+
+        $helperHtml = $helperText !== ''
+            ? '<span class="builder-field-help" id="' . $fieldKey . '-help">' . htmlspecialchars($helperText, ENT_QUOTES, 'UTF-8') . '</span>'
+            : '';
+        $currentLength = function_exists('mb_strlen') ? mb_strlen((string) $currentValue) : strlen((string) $currentValue);
+        $counterHtml = $showCounter
+            ? '<span class="builder-field-count" id="' . $fieldKey . '-count" data-field-counter="' . $fieldKey . '">' . $currentLength . '/' . $maxLength . '</span>'
+            : '';
+
+        return "    <div class=\"builder-field-meta\">{$helperHtml}{$counterHtml}</div>\n";
+    }
+
+    private function buildFieldAssistDescriptor(array $props, string $fieldKey, string $fieldType = ''): string
+    {
+        $ids = [];
+
+        if (trim((string) ($props['helperText'] ?? '')) !== '') {
+            $ids[] = $fieldKey . '-help';
+        }
+
+        $maxLength = (int) ($props['maxLength'] ?? 0);
+        if (in_array($fieldType, ['input', 'textarea'], true) && $maxLength > 0) {
+            $ids[] = $fieldKey . '-count';
+        }
+
+        return htmlspecialchars(implode(' ', $ids), ENT_QUOTES, 'UTF-8');
     }
 
     private function resolveStepIndex(array $props): int

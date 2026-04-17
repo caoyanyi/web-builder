@@ -978,6 +978,15 @@
                                     <button type="button" class="btn btn-outline-secondary btn-sm" @click="applyValidationPreset('number')">数字</button>
                                 </div>
                             </div>
+                            <div v-if="selectedElementType === 'input' || selectedElementType === 'textarea'" class="mt-3">
+                                <label class="form-label">长度限制</label>
+                                <div class="shortcut-grid">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="updateElementProp('maxLength', '20')">20 字内</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="updateElementProp('maxLength', '50')">50 字内</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="updateElementProp('maxLength', '200')">200 字内</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" @click="updateElementProp('maxLength', '')">清空限制</button>
+                                </div>
+                            </div>
                         </div>
 
                         <div v-if="selectedElementType === 'form-summary'" class="property-shortcuts">
@@ -1177,6 +1186,15 @@
                             </div>
                             <div v-if="field.key === 'value' && selectedElementType === 'checkbox-group'" class="form-text">
                                 多选组默认值可填写多个 value，并用英文逗号分隔。
+                            </div>
+                            <div v-if="field.key === 'helperText'" class="form-text">
+                                会显示在字段下方，适合填写规则、示例格式或补充说明。
+                            </div>
+                            <div v-if="field.key === 'maxLength' && ['input', 'textarea'].includes(selectedElementType)" class="form-text">
+                                配置后会显示实时字数计数，并在预览与导出结果中限制输入长度。
+                            </div>
+                            <div v-if="(field.key === 'minValue' || field.key === 'maxValue') && selectedElementType === 'input'" class="form-text">
+                                适合数字输入场景，提交前会校验是否落在设定范围内。
                             </div>
                         </div>
                     </div>

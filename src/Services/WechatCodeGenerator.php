@@ -323,6 +323,25 @@ page {
   background: rgba(248, 251, 247, 0.84);
   color: rgba(96, 117, 111, 0.92);
   font-size: 24rpx;
+}
+
+.builder-field-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18rpx;
+  margin-top: 10rpx;
+}
+
+.builder-field-help,
+.builder-field-count {
+  color: rgba(96, 117, 111, 0.92);
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.builder-field-help {
+  flex: 1;
 }";
     }
     
@@ -454,6 +473,60 @@ page {
     return schema.filter((field) => this.isFieldVisible(field));
   },
 
+  validateSchemaField(field) {
+    if (!field) {
+      return '';
+    }
+
+    const values = this.data.formValues || {};
+    const rawValue = values[field.key];
+    const value = Array.isArray(rawValue) ? rawValue.map((item) => String(item || '').trim()).filter(Boolean) : String(rawValue || '').trim();
+
+    if (field.required && ((Array.isArray(value) && value.length === 0) || (!Array.isArray(value) && !value))) {
+      return (field.label || '当前字段') + '为必填项';
+    }
+
+    if (Array.isArray(value) || !value) {
+      return '';
+    }
+
+    const minLength = Number(field.minLength || 0);
+    if (Number.isFinite(minLength) && minLength > 0 && value.length < minLength) {
+      return (field.label || '当前字段') + '至少输入 ' + minLength + ' 个字符';
+    }
+
+    const maxLength = Number(field.maxLength || 0);
+    if (Number.isFinite(maxLength) && maxLength > 0 && value.length > maxLength) {
+      return (field.label || '当前字段') + '最多输入 ' + maxLength + ' 个字符';
+    }
+
+    const minValue = field.minValue !== '' && field.minValue !== undefined ? Number(field.minValue) : NaN;
+    const maxValue = field.maxValue !== '' && field.maxValue !== undefined ? Number(field.maxValue) : NaN;
+    const numericValue = Number(value);
+
+    if (Number.isFinite(minValue) && Number.isFinite(numericValue) && numericValue < minValue) {
+      return (field.label || '当前字段') + '不能小于 ' + minValue;
+    }
+
+    if (Number.isFinite(maxValue) && Number.isFinite(numericValue) && numericValue > maxValue) {
+      return (field.label || '当前字段') + '不能大于 ' + maxValue;
+    }
+
+    if (!field.pattern) {
+      return '';
+    }
+
+    try {
+      if (!(new RegExp(field.pattern)).test(value)) {
+        return field.message || ((field.label || '当前字段') + '格式不正确');
+      }
+    } catch (error) {
+      return '';
+    }
+
+    return '';
+  },
+
   getFieldDisplayValue(field) {
     if (!field) {
       return '未填写';
@@ -502,25 +575,15 @@ page {
   },
 
   validateSchemaFields(fields = []) {
-    const values = this.data.formValues || {};
-    return fields.find((field) => {
-      const rawValue = values[field.key];
-      const value = Array.isArray(rawValue) ? rawValue.map((item) => String(item || '').trim()).filter(Boolean) : String(rawValue || '').trim();
+    const invalidField = fields.find((field) => this.validateSchemaField(field));
+    if (!invalidField) {
+      return null;
+    }
 
-      if (field.required && ((Array.isArray(value) && value.length === 0) || (!Array.isArray(value) && !value))) {
-        return true;
-      }
-
-      if (Array.isArray(value) || !value || !field.pattern) {
-        return false;
-      }
-
-      try {
-        return !(new RegExp(field.pattern)).test(value);
-      } catch (error) {
-        return false;
-      }
-    }) || null;
+    return {
+      field: invalidField,
+      message: this.validateSchemaField(invalidField)
+    };
   },
 
   handleFieldInput(event) {
@@ -633,14 +696,8 @@ page {
       const invalidField = this.validateSchemaFields(this.getCurrentStepSchema());
 
       if (invalidField) {
-        const rawValue = (this.data.formValues || {})[invalidField.key];
-        const isEmpty = Array.isArray(rawValue)
-          ? rawValue.length === 0
-          : !String(rawValue || '').trim();
         wx.showToast({
-          title: invalidField.required && isEmpty
-            ? ((invalidField.label || '当前字段') + '为必填项')
-            : (invalidField.message || ((invalidField.label || '当前字段') + '格式不正确')),
+          title: invalidField.message || ((invalidField.field && invalidField.field.label) || '当前字段') + '格式不正确',
           icon: 'none'
         });
         return;
@@ -664,14 +721,8 @@ page {
       const invalidField = this.validateSchemaFields(currentStepSchema);
 
       if (invalidField) {
-        const rawValue = values[invalidField.key];
-        const isEmpty = Array.isArray(rawValue)
-          ? rawValue.length === 0
-          : !String(rawValue || '').trim();
         wx.showToast({
-          title: invalidField.required && isEmpty
-            ? ((invalidField.label || '当前字段') + '为必填项')
-            : (invalidField.message || ((invalidField.label || '当前字段') + '格式不正确')),
+          title: invalidField.message || ((invalidField.field && invalidField.field.label) || '当前字段') + '格式不正确',
           icon: 'none'
         });
         return;
@@ -902,7 +953,10 @@ page {
                 $fieldType = htmlspecialchars($this->resolveWechatInputType($props['inputType'] ?? 'text'), ENT_QUOTES, 'UTF-8');
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
-                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<input type=\"{$fieldType}\" class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{{formValues.{$fieldKey}}}\" data-field-key=\"{$fieldKey}\" data-field-type=\"{$fieldType}\" bindinput=\"handleFieldInput\" /></view>\n";
+                $maxLength = (string) ($props['maxLength'] ?? '');
+                $maxLengthAttr = $maxLength !== '' ? " maxlength=\"{$maxLength}\"" : '';
+                $assistWxml = $this->buildWechatFieldAssistWxml($props, $fieldKey, 'input');
+                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<input type=\"{$fieldType}\" class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{{formValues.{$fieldKey}}}\" data-field-key=\"{$fieldKey}\" data-field-type=\"{$fieldType}\" bindinput=\"handleFieldInput\"{$maxLengthAttr} />{$assistWxml}</view>\n";
                 break;
 
             case 'textarea':
@@ -915,7 +969,10 @@ page {
                 $fieldKey = $this->resolveFieldKey($element);
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
-                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<textarea class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{{formValues.{$fieldKey}}}\" data-field-key=\"{$fieldKey}\" bindinput=\"handleFieldInput\"></textarea></view>\n";
+                $maxLength = (string) ($props['maxLength'] ?? '');
+                $maxLengthAttr = $maxLength !== '' ? " maxlength=\"{$maxLength}\"" : '';
+                $assistWxml = $this->buildWechatFieldAssistWxml($props, $fieldKey, 'textarea');
+                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<textarea class=\"{$class}\" style=\"{$style}\" placeholder=\"{$placeholder}\" value=\"{{formValues.{$fieldKey}}}\" data-field-key=\"{$fieldKey}\" bindinput=\"handleFieldInput\"{$maxLengthAttr}></textarea>{$assistWxml}</view>\n";
                 break;
 
             case 'select':
@@ -927,7 +984,8 @@ page {
                 $fieldKey = $this->resolveFieldKey($element);
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
-                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<picker mode=\"selector\" range=\"{{formSchemaMap.{$fieldKey}.options}}\" range-key=\"label\" data-field-key=\"{$fieldKey}\" bindchange=\"handlePickerChange\"><view class=\"{$class}\" style=\"{$style}\">{{formDisplayValues.{$fieldKey}}}</view></picker></view>\n";
+                $assistWxml = $this->buildWechatFieldAssistWxml($props, $fieldKey, 'select');
+                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<picker mode=\"selector\" range=\"{{formSchemaMap.{$fieldKey}.options}}\" range-key=\"label\" data-field-key=\"{$fieldKey}\" bindchange=\"handlePickerChange\"><view class=\"{$class}\" style=\"{$style}\">{{formDisplayValues.{$fieldKey}}}</view></picker>{$assistWxml}</view>\n";
                 break;
 
             case 'radio-group':
@@ -940,7 +998,8 @@ page {
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
                 $optionsWxml = $this->buildWechatChoiceGroupWxml('radio', $fieldKey);
-                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<radio-group class=\"{$class}\" style=\"{$style}\" data-field-key=\"{$fieldKey}\" data-field-type=\"radio-group\" bindchange=\"handleChoiceChange\">{$optionsWxml}</radio-group></view>\n";
+                $assistWxml = $this->buildWechatFieldAssistWxml($props, $fieldKey, 'radio-group');
+                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<radio-group class=\"{$class}\" style=\"{$style}\" data-field-key=\"{$fieldKey}\" data-field-type=\"radio-group\" bindchange=\"handleChoiceChange\">{$optionsWxml}</radio-group>{$assistWxml}</view>\n";
                 break;
 
             case 'checkbox-group':
@@ -953,7 +1012,8 @@ page {
                 $wrapperStyle = $width ? "width:{$width};" : '';
                 $labelWxml = $label ? "<text style=\"display:block;margin-bottom:6px;\">{$label}{$required}</text>" : '';
                 $optionsWxml = $this->buildWechatChoiceGroupWxml('checkbox', $fieldKey);
-                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<checkbox-group class=\"{$class}\" style=\"{$style}\" data-field-key=\"{$fieldKey}\" data-field-type=\"checkbox-group\" bindchange=\"handleChoiceChange\">{$optionsWxml}</checkbox-group></view>\n";
+                $assistWxml = $this->buildWechatFieldAssistWxml($props, $fieldKey, 'checkbox-group');
+                $wxml = "<view style=\"{$wrapperStyle}\">{$labelWxml}<checkbox-group class=\"{$class}\" style=\"{$style}\" data-field-key=\"{$fieldKey}\" data-field-type=\"checkbox-group\" bindchange=\"handleChoiceChange\">{$optionsWxml}</checkbox-group>{$assistWxml}</view>\n";
                 break;
 
             case 'spacer':
@@ -1003,10 +1063,16 @@ page {
                 $schema[] = [
                     'key' => $this->resolveFieldKey($element),
                     'type' => $type,
+                    'inputType' => $props['inputType'] ?? 'text',
                     'label' => $props['label'] ?? ($props['placeholder'] ?? '当前字段'),
+                    'helperText' => $props['helperText'] ?? '',
                     'required' => !empty($props['required']),
                     'value' => $fieldValue,
                     'placeholder' => $props['placeholder'] ?? '请选择',
+                    'minLength' => $props['minLength'] ?? '',
+                    'maxLength' => $props['maxLength'] ?? '',
+                    'minValue' => $props['minValue'] ?? '',
+                    'maxValue' => $props['maxValue'] ?? '',
                     'pattern' => $props['validationPattern'] ?? '',
                     'message' => $props['validationMessage'] ?? '',
                     'options' => in_array($type, ['select', 'radio-group', 'checkbox-group'], true)
@@ -1062,6 +1128,24 @@ page {
         }
 
         return "<label wx:for=\"{{formSchemaMap.{$fieldKey}.options}}\" wx:key=\"value\" class=\"choice-option\"><checkbox value=\"{{item.value}}\" checked=\"{{formCheckedMap.{$fieldKey}[item.checkedKey]}}\" /><text>{{item.label}}</text></label>";
+    }
+
+    private function buildWechatFieldAssistWxml(array $props, string $fieldKey, string $fieldType = ''): string
+    {
+        $helperText = htmlspecialchars((string) ($props['helperText'] ?? ''), ENT_QUOTES, 'UTF-8');
+        $maxLength = (int) ($props['maxLength'] ?? 0);
+        $showCounter = in_array($fieldType, ['input', 'textarea'], true) && $maxLength > 0;
+
+        if ($helperText === '' && !$showCounter) {
+            return '';
+        }
+
+        $helperHtml = $helperText !== '' ? "<text class=\"builder-field-help\">{$helperText}</text>" : '';
+        $counterHtml = $showCounter
+            ? "<text class=\"builder-field-count\">{{formValues.{$fieldKey} ? formValues.{$fieldKey}.length : 0}}/{$maxLength}</text>"
+            : '';
+
+        return "<view class=\"builder-field-meta\">{$helperHtml}{$counterHtml}</view>";
     }
 
     private function buildWechatSummaryWxml(array $props): string

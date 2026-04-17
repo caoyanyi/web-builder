@@ -2,7 +2,7 @@ const { createApp } = Vue;
 
 const CONTAINER_TYPES = ['div', 'row'];
 const FORM_FIELD_TYPES = ['input', 'textarea', 'select', 'radio-group', 'checkbox-group'];
-const PROP_ORDER = ['content', 'text', 'summaryTitle', 'emptyText', 'label', 'required', 'placeholder', 'value', 'rows', 'fieldKey', 'stepIndex', 'stepTitle', 'conditionEnabled', 'conditionFieldKey', 'conditionOperator', 'conditionValue', 'inputType', 'options', 'optionLayout', 'validationPattern', 'validationMessage', 'height', 'src', 'alt', 'class', 'width', 'style', 'actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitResetForm', 'submitRedirectUrl'];
+const PROP_ORDER = ['content', 'text', 'summaryTitle', 'emptyText', 'label', 'required', 'helperText', 'placeholder', 'value', 'rows', 'minLength', 'maxLength', 'minValue', 'maxValue', 'fieldKey', 'stepIndex', 'stepTitle', 'conditionEnabled', 'conditionFieldKey', 'conditionOperator', 'conditionValue', 'inputType', 'options', 'optionLayout', 'validationPattern', 'validationMessage', 'height', 'src', 'alt', 'class', 'width', 'style', 'actionType', 'actionValue', 'submitEndpoint', 'submitMethod', 'submitResetForm', 'submitRedirectUrl'];
 const HISTORY_LIMIT = 60;
 const DRAG_KIND_COMPONENT = 'component';
 const DRAG_KIND_ELEMENT = 'existing-element';
@@ -808,6 +808,41 @@ const ComponentRenderer = {
         isHorizontalChoiceLayout() {
             return (this.element.props && this.element.props.optionLayout) === 'horizontal';
         },
+        helperText() {
+            return String((this.element.props && this.element.props.helperText) || '').trim();
+        },
+        fieldAssistKeyBase() {
+            const rawKey = (this.element.props && this.element.props.fieldKey)
+                || this.element.id
+                || this.element.type
+                || 'field';
+            return String(rawKey).replace(/[^\w-]+/g, '_');
+        },
+        fieldControlId() {
+            return `builder-preview-control-${this.fieldAssistKeyBase}`;
+        },
+        helperTextId() {
+            return this.helperText ? `builder-preview-help-${this.fieldAssistKeyBase}` : '';
+        },
+        fieldCounterId() {
+            return this.fieldCounterText ? `builder-preview-count-${this.fieldAssistKeyBase}` : '';
+        },
+        fieldDescribedBy() {
+            return [this.helperTextId, this.fieldCounterId].filter(Boolean).join(' ');
+        },
+        fieldCounterText() {
+            if (!['input', 'textarea'].includes(this.element.type)) {
+                return '';
+            }
+
+            const props = this.element.props || {};
+            const maxLength = Number.parseInt(String(props.maxLength || ''), 10);
+            if (!Number.isFinite(maxLength) || maxLength <= 0) {
+                return '';
+            }
+
+            return `${String(props.value || '').length}/${maxLength}`;
+        },
         summaryPreviewEntries() {
             return Object.values(this.fieldDefinitions || {})
                 .sort((left, right) => String(left.label || left.key).localeCompare(String(right.label || right.key), 'zh-CN'))
@@ -1017,40 +1052,54 @@ const ComponentRenderer = {
             </div>
 
             <div v-else-if="element.type === 'input'" class="builder-field-group" :style="elementStyle">
-                <label v-if="element.props.label" class="builder-field-label">
+                <label v-if="element.props.label" class="builder-field-label" :for="fieldControlId">
                     {{ element.props.label }}
                     <span v-if="element.props.required" class="builder-field-required">*</span>
                 </label>
                 <input
+                    :id="fieldControlId"
                     :type="element.props.inputType || 'text'"
                     :class="['builder-render-field', element.props.class || 'form-control']"
                     :placeholder="element.props.placeholder || '请输入内容'"
                     :value="element.props.value || ''"
+                    :aria-describedby="fieldDescribedBy || undefined"
                     readonly
                 >
+                <div v-if="helperText || fieldCounterText" class="builder-field-meta">
+                    <span v-if="helperText" :id="helperTextId" class="builder-field-help">{{ helperText }}</span>
+                    <span v-if="fieldCounterText" :id="fieldCounterId" class="builder-field-count">{{ fieldCounterText }}</span>
+                </div>
             </div>
 
             <div v-else-if="element.type === 'textarea'" class="builder-field-group" :style="elementStyle">
-                <label v-if="element.props.label" class="builder-field-label">
+                <label v-if="element.props.label" class="builder-field-label" :for="fieldControlId">
                     {{ element.props.label }}
                     <span v-if="element.props.required" class="builder-field-required">*</span>
                 </label>
                 <textarea
+                    :id="fieldControlId"
                     :class="['builder-render-field', 'builder-render-textarea', element.props.class || 'form-control']"
                     :rows="Number(element.props.rows || 4)"
                     :placeholder="element.props.placeholder || '请输入多行内容'"
+                    :aria-describedby="fieldDescribedBy || undefined"
                     readonly
                 >{{ element.props.value || '' }}</textarea>
+                <div v-if="helperText || fieldCounterText" class="builder-field-meta">
+                    <span v-if="helperText" :id="helperTextId" class="builder-field-help">{{ helperText }}</span>
+                    <span v-if="fieldCounterText" :id="fieldCounterId" class="builder-field-count">{{ fieldCounterText }}</span>
+                </div>
             </div>
 
             <div v-else-if="element.type === 'select'" class="builder-field-group" :style="elementStyle">
-                <label v-if="element.props.label" class="builder-field-label">
+                <label v-if="element.props.label" class="builder-field-label" :for="fieldControlId">
                     {{ element.props.label }}
                     <span v-if="element.props.required" class="builder-field-required">*</span>
                 </label>
                 <select
+                    :id="fieldControlId"
                     :class="['builder-render-field', element.props.class || 'form-control']"
                     :value="element.props.value || ''"
+                    :aria-describedby="fieldDescribedBy || undefined"
                     disabled
                 >
                     <option value="">{{ element.props.placeholder || '请选择' }}</option>
@@ -1062,6 +1111,9 @@ const ComponentRenderer = {
                         {{ option.label }}
                     </option>
                 </select>
+                <div v-if="helperText" class="builder-field-meta">
+                    <span :id="helperTextId" class="builder-field-help">{{ helperText }}</span>
+                </div>
             </div>
 
             <div v-else-if="element.type === 'radio-group'" class="builder-field-group" :style="elementStyle">
@@ -1082,6 +1134,9 @@ const ComponentRenderer = {
                         请先在右侧配置选项内容
                     </div>
                 </div>
+                <div v-if="helperText" class="builder-field-meta">
+                    <span :id="helperTextId" class="builder-field-help">{{ helperText }}</span>
+                </div>
             </div>
 
             <div v-else-if="element.type === 'checkbox-group'" class="builder-field-group" :style="elementStyle">
@@ -1101,6 +1156,9 @@ const ComponentRenderer = {
                     <div v-if="choiceOptions.length === 0" class="builder-choice-empty">
                         请先在右侧配置选项内容
                     </div>
+                </div>
+                <div v-if="helperText" class="builder-field-meta">
+                    <span :id="helperTextId" class="builder-field-help">{{ helperText }}</span>
                 </div>
             </div>
 
@@ -1237,9 +1295,14 @@ createApp({
                 emptyText: '空态文案',
                 label: '字段标签',
                 required: '必填',
+                helperText: '说明文案',
                 placeholder: '占位提示',
                 value: '默认值',
                 rows: '可视行数',
+                minLength: '最小长度',
+                maxLength: '最大长度',
+                minValue: '最小值',
+                maxValue: '最大值',
                 fieldKey: '字段标识',
                 stepIndex: '所属步骤',
                 stepTitle: '步骤标题',
@@ -1270,9 +1333,14 @@ createApp({
                 text: 'text',
                 label: 'text',
                 required: 'checkbox',
+                helperText: 'text',
                 placeholder: 'text',
                 value: 'text',
                 rows: 'number',
+                minLength: 'number',
+                maxLength: 'number',
+                minValue: 'number',
+                maxValue: 'number',
                 fieldKey: 'text',
                 stepIndex: 'number',
                 stepTitle: 'text',
@@ -3335,8 +3403,13 @@ createApp({
                     return applyConditionalDefaults({
                         label: '输入项',
                         required: false,
+                        helperText: '',
                         placeholder: '请输入内容',
                         value: '',
+                        minLength: '',
+                        maxLength: '',
+                        minValue: '',
+                        maxValue: '',
                         fieldKey: `field_${createId('input')}`,
                         inputType: 'text',
                         validationPattern: '',
@@ -3349,9 +3422,12 @@ createApp({
                     return applyConditionalDefaults({
                         label: '多行输入',
                         required: false,
+                        helperText: '',
                         placeholder: '请输入多行内容',
                         value: '',
                         rows: '4',
+                        minLength: '',
+                        maxLength: '',
                         fieldKey: `field_${createId('textarea')}`,
                         validationPattern: '',
                         validationMessage: '',
@@ -3363,6 +3439,7 @@ createApp({
                     return applyConditionalDefaults({
                         label: '下拉选择',
                         required: false,
+                        helperText: '',
                         placeholder: '请选择',
                         value: '',
                         fieldKey: `field_${createId('select')}`,
@@ -3375,6 +3452,7 @@ createApp({
                     return applyConditionalDefaults({
                         label: '单选项',
                         required: false,
+                        helperText: '',
                         value: '',
                         fieldKey: `field_${createId('radio')}`,
                         options: 'option_a|选项一\noption_b|选项二\noption_c|选项三',
@@ -3387,6 +3465,7 @@ createApp({
                     return applyConditionalDefaults({
                         label: '多选项',
                         required: false,
+                        helperText: '',
                         value: '',
                         fieldKey: `field_${createId('checkbox')}`,
                         options: 'option_a|选项一\noption_b|选项二\noption_c|选项三',
@@ -3761,6 +3840,7 @@ createApp({
                     ? (event.target.closest('.page') || stage)
                     : stage;
                 this.refreshPreviewConditionalVisibility(scope);
+                this.refreshPreviewFieldAssistState(scope);
                 this.refreshPreviewStepState(scope);
                 this.refreshPreviewSummaryState(scope);
             };
@@ -3782,6 +3862,9 @@ createApp({
         },
         getPreviewFields(scope) {
             return Array.from((scope || this.$refs.previewStage || document).querySelectorAll('[data-builder-field="true"]'));
+        },
+        getPreviewFieldCounters(scope) {
+            return Array.from((scope || this.$refs.previewStage || document).querySelectorAll('[data-field-counter]'));
         },
         getPreviewSummaryBlocks(scope) {
             return Array.from((scope || this.$refs.previewStage || document).querySelectorAll('[data-summary-enabled="1"]'));
@@ -3836,6 +3919,31 @@ createApp({
             }
 
             return field && field.value !== undefined ? field.value : '';
+        },
+        refreshPreviewFieldAssistState(scope) {
+            const pageNode = this.getPreviewPageNode(scope);
+            const fields = this.getPreviewFields(pageNode);
+            const counters = this.getPreviewFieldCounters(pageNode);
+
+            if (fields.length === 0 || counters.length === 0) {
+                return;
+            }
+
+            counters.forEach((counter) => {
+                const targetKey = counter.dataset.fieldCounter || '';
+                const field = fields.find((item) => (item.dataset.counterTarget || item.dataset.fieldKey || '') === targetKey);
+
+                if (!field) {
+                    return;
+                }
+
+                const maxLength = Number.parseInt(String(field.dataset.maxLength || ''), 10);
+                if (!Number.isFinite(maxLength) || maxLength <= 0) {
+                    return;
+                }
+
+                counter.textContent = `${String(this.getPreviewFieldValue(field) || '').length}/${maxLength}`;
+            });
         },
         getPreviewFieldDisplayValue(field) {
             if (!field) {
@@ -4084,6 +4192,28 @@ createApp({
                 return '';
             }
 
+            const minLength = Number.parseInt(String(field.dataset.minLength || ''), 10);
+            if (Number.isFinite(minLength) && minLength > 0 && stringValue.length < minLength) {
+                return `${label}至少输入 ${minLength} 个字符`;
+            }
+
+            const maxLength = Number.parseInt(String(field.dataset.maxLength || ''), 10);
+            if (Number.isFinite(maxLength) && maxLength > 0 && stringValue.length > maxLength) {
+                return `${label}最多输入 ${maxLength} 个字符`;
+            }
+
+            const minValue = field.dataset.minValue !== '' ? Number(field.dataset.minValue) : NaN;
+            const maxValue = field.dataset.maxValue !== '' ? Number(field.dataset.maxValue) : NaN;
+            const numericValue = Number(stringValue);
+
+            if (Number.isFinite(minValue) && Number.isFinite(numericValue) && numericValue < minValue) {
+                return `${label}不能小于 ${minValue}`;
+            }
+
+            if (Number.isFinite(maxValue) && Number.isFinite(numericValue) && numericValue > maxValue) {
+                return `${label}不能大于 ${maxValue}`;
+            }
+
             const pattern = field.dataset.pattern || '';
             if (!pattern) {
                 return '';
@@ -4175,6 +4305,7 @@ createApp({
             const totalSteps = Number((this.getPreviewPageNode(scope).dataset || {}).totalSteps || this.currentPageStepCatalog.length || 1);
 
             if (direction === 'prev') {
+                this.refreshPreviewFieldAssistState(scope);
                 this.refreshPreviewStepState(scope, Math.max(1, currentStep - 1));
                 this.refreshPreviewSummaryState(scope);
                 return false;
@@ -4184,6 +4315,7 @@ createApp({
                 return false;
             }
 
+            this.refreshPreviewFieldAssistState(scope);
             this.refreshPreviewStepState(scope, Math.min(totalSteps, currentStep + 1));
             this.refreshPreviewSummaryState(scope);
             return false;
@@ -4219,6 +4351,7 @@ createApp({
                     this.resetPreviewField(field);
                 });
                 this.refreshPreviewConditionalVisibility(scope);
+                this.refreshPreviewFieldAssistState(scope);
                 this.refreshPreviewStepState(scope, 1);
                 this.refreshPreviewSummaryState(scope);
             }
@@ -4446,6 +4579,7 @@ createApp({
                 this.$nextTick(() => {
                     this.setupPreviewStageListeners();
                     this.refreshAllPreviewConditionalVisibility();
+                    this.refreshPreviewFieldAssistState(this.$refs.previewStage);
                     this.refreshAllPreviewStepStates();
                     this.refreshAllPreviewSummaryStates();
                 });
