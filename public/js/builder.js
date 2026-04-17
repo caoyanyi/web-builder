@@ -1774,10 +1774,8 @@ createApp({
         }
     },
     mounted() {
-        this.fetchProjects(true);
-        this.fetchSubmissions(true);
-        this.resetHistory();
         this.refreshLocalDraftInfo();
+        this.initializeBuilder();
         window.addEventListener('keydown', this.handleKeydown);
         window.addEventListener('dragend', this.clearDropTarget);
         window.builderSubmitAction = (trigger, config = {}) => this.handleBuilderSubmitAction(trigger, config);
@@ -1785,10 +1783,6 @@ createApp({
         this.$nextTick(() => {
             this.setupPreviewStageListeners();
         });
-
-        if (this.draftInfo) {
-            this.setStatus('发现本地草稿，可在左侧项目管理区域恢复。', 'info');
-        }
     },
     unmounted() {
         window.removeEventListener('keydown', this.handleKeydown);
@@ -2281,6 +2275,62 @@ createApp({
         },
         getSectionTemplateConfig(key) {
             return SECTION_TEMPLATES.find((template) => template.key === key) || null;
+        },
+        getRequestedProjectId() {
+            const projectId = new URLSearchParams(window.location.search).get('project');
+            return projectId ? String(projectId).trim() : '';
+        },
+        getRequestedTemplateKey() {
+            const templateKey = new URLSearchParams(window.location.search).get('template');
+            return templateKey && this.getSectionTemplateConfig(templateKey) ? templateKey : '';
+        },
+        syncProjectUrl(projectId = null) {
+            if (!window.history || typeof window.history.replaceState !== 'function') {
+                return;
+            }
+
+            const url = new URL(window.location.href);
+
+            if (projectId) {
+                url.searchParams.set('project', String(projectId));
+                url.searchParams.delete('template');
+            } else {
+                url.searchParams.delete('project');
+                url.searchParams.delete('template');
+            }
+
+            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+        },
+        async initializeBuilder() {
+            await this.fetchProjects(true);
+            await this.fetchSubmissions(true);
+
+            const requestedProjectId = this.getRequestedProjectId();
+
+            if (requestedProjectId) {
+                await this.loadProject(requestedProjectId);
+
+                if (this.projectId) {
+                    return;
+                }
+
+                this.syncProjectUrl(null);
+            }
+
+            const requestedTemplateKey = this.getRequestedTemplateKey();
+
+            if (requestedTemplateKey) {
+                this.insertSectionTemplate(requestedTemplateKey);
+                this.syncProjectUrl(null);
+                this.resetHistory();
+                return;
+            }
+
+            this.resetHistory();
+
+            if (this.draftInfo) {
+                this.setStatus('发现本地草稿，可在左侧项目管理区域恢复。', 'info');
+            }
         },
         getButtonActionLabel(actionType) {
             const matched = BUTTON_ACTION_OPTIONS.find((item) => item.value === actionType);
@@ -2890,6 +2940,7 @@ createApp({
             this.selectedElementId = snapshot.selectedElementId || null;
             this.viewportMode = snapshot.viewportMode || 'desktop';
             this.isApplyingHistory = false;
+            this.syncProjectUrl(this.projectId || null);
             this.queueDraftSave();
         },
         undoHistory() {
@@ -3541,6 +3592,7 @@ createApp({
             this.hasPreview = false;
             this.wechatCode = '';
             this.h5Code = '';
+            this.syncProjectUrl(this.projectId || null);
             this.saveLocalDraft(true);
             this.fetchSubmissions(true);
         },
@@ -3560,6 +3612,7 @@ createApp({
             this.hasPreview = false;
             this.wechatCode = '';
             this.h5Code = '';
+            this.syncProjectUrl(null);
             this.resetHistory();
             this.saveLocalDraft(true);
             this.fetchSubmissions(true);
@@ -4170,6 +4223,7 @@ createApp({
                     this.projectId = json.id;
                 }
 
+                this.syncProjectUrl(this.projectId || null);
                 await this.fetchProjects(true);
                 await this.fetchSubmissions(true);
                 this.captureHistory();
