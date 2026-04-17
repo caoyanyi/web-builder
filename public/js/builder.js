@@ -960,6 +960,7 @@ createApp({
             submissionSearchKeyword: '',
             submissionSourceFilter: 'all',
             submissionPageFilter: 'all',
+            selectedSubmissionId: null,
             draftInfo: null,
             historyStack: [],
             historyIndex: -1,
@@ -1152,7 +1153,7 @@ createApp({
                 }
 
                 const fieldEntries = this.getSubmissionFieldEntries(submission)
-                    .map(([fieldKey, fieldValue]) => `${fieldKey} ${Array.isArray(fieldValue) ? fieldValue.join(' ') : fieldValue}`)
+                    .map((field) => `${field.label} ${field.key} ${field.displayValue}`)
                     .join(' ');
                 const haystack = [
                     submission.id,
@@ -1179,6 +1180,16 @@ createApp({
                 today: todayCount,
                 pageCount
             };
+        },
+        fieldDefinitionMap() {
+            return this.buildFieldDefinitionMap();
+        },
+        selectedSubmission() {
+            if (!this.selectedSubmissionId) {
+                return null;
+            }
+
+            return this.safeSubmissionRecords.find((item) => String(item.id) === String(this.selectedSubmissionId)) || null;
         },
         pageCount() {
             return this.safePages.length;
@@ -1764,12 +1775,87 @@ createApp({
 
             return sourceMap[source] || source || 'unknown';
         },
+        buildFieldDefinitionMap() {
+            const definitions = {};
+
+            this.safePages.forEach((page) => {
+                this.collectFieldDefinitions(page.elements || [], page, definitions);
+            });
+
+            return definitions;
+        },
+        collectFieldDefinitions(elements, page, definitions) {
+            (elements || []).forEach((element) => {
+                const props = element && element.props ? element.props : {};
+                const type = element && element.type ? element.type : '';
+                const supportedTypes = ['input', 'textarea', 'select', 'radio-group', 'checkbox-group'];
+
+                if (supportedTypes.includes(type)) {
+                    const fallbackKey = `field_${String(element.id || type).replace(/[^\w-]+/g, '_')}`;
+                    const fieldKey = props.fieldKey || fallbackKey;
+
+                    definitions[fieldKey] = {
+                        key: fieldKey,
+                        label: props.label || props.placeholder || fieldKey,
+                        type,
+                        options: parseChoiceOptions(props.options),
+                        pageName: page && page.name ? page.name : 'index',
+                        pageTitle: page && page.title ? page.title : '首页'
+                    };
+                }
+
+                if (Array.isArray(element.children) && element.children.length > 0) {
+                    this.collectFieldDefinitions(element.children, page, definitions);
+                }
+            });
+        },
+        getFieldDefinition(fieldKey) {
+            return this.fieldDefinitionMap[fieldKey] || null;
+        },
+        getSubmissionFieldLabel(fieldKey) {
+            const definition = this.getFieldDefinition(fieldKey);
+            return definition && definition.label ? definition.label : fieldKey;
+        },
+        getFieldOptionLabel(fieldKey, rawValue) {
+            const definition = this.getFieldDefinition(fieldKey);
+            const options = definition && Array.isArray(definition.options) ? definition.options : [];
+            const matched = options.find((option) => String(option.value) === String(rawValue));
+
+            return matched ? matched.label : rawValue;
+        },
+        formatSubmissionFieldValue(fieldKey, fieldValue) {
+            if (Array.isArray(fieldValue)) {
+                return fieldValue.map((item) => this.getFieldOptionLabel(fieldKey, item)).join(', ');
+            }
+
+            if (fieldValue === null || fieldValue === undefined || fieldValue === '') {
+                return '未填写';
+            }
+
+            return String(this.getFieldOptionLabel(fieldKey, fieldValue));
+        },
         getSubmissionFieldEntries(submission) {
             const formData = submission && submission.form_data && typeof submission.form_data === 'object'
                 ? submission.form_data
                 : {};
 
-            return Object.entries(formData);
+            return Object.entries(formData).map(([fieldKey, fieldValue]) => ({
+                key: fieldKey,
+                label: this.getSubmissionFieldLabel(fieldKey),
+                rawValue: fieldValue,
+                displayValue: this.formatSubmissionFieldValue(fieldKey, fieldValue)
+            }));
+        },
+        getSubmissionPreviewEntries(submission, limit = 3) {
+            return this.getSubmissionFieldEntries(submission).slice(0, limit);
+        },
+        openSubmissionDetail(submission) {
+            if (!submission) {
+                return;
+            }
+
+            this.selectedSubmissionId = submission.id;
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('submissionDetailModal')).show();
         },
         resetSubmissionFilters() {
             this.submissionSearchKeyword = '';
@@ -1788,9 +1874,21 @@ createApp({
             }
 
             const dynamicFieldKeys = Array.from(new Set(
-                this.filteredSubmissionRecords.flatMap((submission) => this.getSubmissionFieldEntries(submission).map(([fieldKey]) => fieldKey))
+                this.filteredSubmissionRecords.flatMap((submission) => this.getSubmissionFieldEntries(submission).map((field) => field.key))
             ));
-            const headers = ['id', 'project_name', 'project_type', 'page_name', 'page_title', 'source', 'submitted_at', ...dynamicFieldKeys];
+            const columnDefs = [
+                { key: 'id', label: '记录ID' },
+                { key: 'project_name', label: '项目名称' },
+                { key: 'project_type', label: '项目类型' },
+                { key: 'page_name', label: '页面标识' },
+                { key: 'page_title', label: '页面标题' },
+                { key: 'source', label: '来源' },
+                { key: 'submitted_at', label: '提交时间' },
+                ...dynamicFieldKeys.map((fieldKey) => ({
+                    key: fieldKey,
+                    label: this.getSubmissionFieldLabel(fieldKey)
+                }))
+            ];
             const rows = this.filteredSubmissionRecords.map((submission) => {
                 const formData = submission && submission.form_data && typeof submission.form_data === 'object'
                     ? submission.form_data
@@ -1809,9 +1907,14 @@ createApp({
                     row[fieldKey] = Object.prototype.hasOwnProperty.call(formData, fieldKey) ? formData[fieldKey] : '';
                 });
 
-                return headers.map((header) => this.escapeCsvValue(row[header])).join(',');
+                return columnDefs.map((column) => {
+                    const value = dynamicFieldKeys.includes(column.key)
+                        ? this.formatSubmissionFieldValue(column.key, row[column.key])
+                        : row[column.key];
+                    return this.escapeCsvValue(value);
+                }).join(',');
             });
-            const csvContent = [headers.join(','), ...rows].join('\n');
+            const csvContent = [columnDefs.map((column) => this.escapeCsvValue(column.label)).join(','), ...rows].join('\n');
             const filename = `${this.normalizePageName(this.projectName || 'submission-records', 1)}-submissions.csv`;
             downloadTextFile(filename, csvContent);
             this.setStatus(`已导出 ${this.filteredSubmissionRecords.length} 条提交记录。`, 'success');

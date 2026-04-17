@@ -332,6 +332,12 @@ body {
     gap: 0.75rem;
 }
 
+.submission-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
 .submission-fields {
     display: flex;
     flex-direction: column;
@@ -354,6 +360,65 @@ body {
 }
 
 .submission-field-row code {
+    color: var(--builder-text);
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+.submission-more {
+    color: var(--builder-text-muted);
+    font-size: 0.82rem;
+}
+
+.submission-detail-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.submission-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+    padding: 0.85rem 0.95rem;
+    border-radius: 0.9rem;
+    border: 1px solid rgba(159, 195, 175, 0.4);
+    background: linear-gradient(180deg, #ffffff 0%, #f7fbf8 100%);
+}
+
+.submission-detail-item span {
+    color: var(--builder-text-muted);
+    font-size: 0.8rem;
+}
+
+.submission-detail-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+
+.submission-detail-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.8rem 0.9rem;
+    border-radius: 0.9rem;
+    border: 1px solid rgba(159, 195, 175, 0.4);
+    background: rgba(248, 251, 247, 0.92);
+}
+
+.submission-detail-labels {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.submission-detail-labels small {
+    color: var(--builder-text-muted);
+}
+
+.submission-detail-row code {
     color: var(--builder-text);
     word-break: break-word;
     white-space: pre-wrap;
@@ -1034,6 +1099,10 @@ body {
     .submission-stats {
         grid-template-columns: 1fr;
     }
+
+    .submission-detail-meta {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 575.98px) {
@@ -1059,6 +1128,12 @@ body {
     .submission-filters,
     .submission-actions {
         grid-template-columns: 1fr;
+    }
+
+    .submission-card-head,
+    .submission-card-actions {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .shortcut-grid,

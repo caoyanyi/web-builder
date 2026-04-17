@@ -314,22 +314,36 @@
                                         <strong>#{{ submission.id }} {{ submission.page_title || submission.page_name }}</strong>
                                         <p class="mb-0 text-muted small">{{ formatSubmissionMeta(submission) }}</p>
                                     </div>
-                                    <button
-                                        @click="deleteSubmission(submission.id)"
-                                        type="button"
-                                        class="btn btn-outline-danger btn-sm"
-                                        :disabled="deletingSubmissionId === submission.id"
-                                    >
-                                        <span v-if="deletingSubmissionId === submission.id" class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-                                        <i v-else class="bi bi-trash3"></i>
-                                    </button>
+                                    <div class="submission-card-actions">
+                                        <button
+                                            @click="openSubmissionDetail(submission)"
+                                            type="button"
+                                            class="btn btn-outline-secondary btn-sm"
+                                        >
+                                            <i class="bi bi-eye"></i>
+                                            详情
+                                        </button>
+                                        <button
+                                            @click="deleteSubmission(submission.id)"
+                                            type="button"
+                                            class="btn btn-outline-danger btn-sm"
+                                            :disabled="deletingSubmissionId === submission.id"
+                                        >
+                                            <span v-if="deletingSubmissionId === submission.id" class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                            <i v-else class="bi bi-trash3"></i>
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div class="submission-fields">
-                                    <div v-for="[fieldKey, fieldValue] in getSubmissionFieldEntries(submission)" :key="fieldKey" class="submission-field-row">
-                                        <span>{{ fieldKey }}</span>
-                                        <code>{{ Array.isArray(fieldValue) ? fieldValue.join(', ') : fieldValue }}</code>
+                                    <div v-for="field in getSubmissionPreviewEntries(submission)" :key="field.key" class="submission-field-row">
+                                        <span>{{ field.label }}</span>
+                                        <code>{{ field.displayValue }}</code>
                                     </div>
+                                </div>
+
+                                <div v-if="getSubmissionFieldEntries(submission).length > 3" class="submission-more">
+                                    还有 {{ getSubmissionFieldEntries(submission).length - 3 }} 个字段，点击“详情”查看完整内容
                                 </div>
                             </div>
                         </div>
@@ -961,6 +975,55 @@
                                 <pre class="code-preview"><code v-text="h5Code"></code></pre>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="submissionDetailModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <div>
+                            <h5 class="modal-title mb-1">提交记录详情</h5>
+                            <p class="text-muted small mb-0" v-if="selectedSubmission">
+                                #{{ selectedSubmission.id }} · {{ formatSubmissionMeta(selectedSubmission) }}
+                            </p>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" v-if="selectedSubmission">
+                        <div class="submission-detail-meta">
+                            <div class="submission-detail-item">
+                                <span>项目</span>
+                                <strong>{{ selectedSubmission.project_name || '未命名项目' }}</strong>
+                            </div>
+                            <div class="submission-detail-item">
+                                <span>页面</span>
+                                <strong>{{ selectedSubmission.page_title || selectedSubmission.page_name }}</strong>
+                            </div>
+                            <div class="submission-detail-item">
+                                <span>来源</span>
+                                <strong>{{ getSubmissionSourceLabel(selectedSubmission.source) }}</strong>
+                            </div>
+                            <div class="submission-detail-item">
+                                <span>提交时间</span>
+                                <strong>{{ formatDateTime(selectedSubmission.submitted_at || selectedSubmission.created_at) }}</strong>
+                            </div>
+                        </div>
+
+                        <div class="submission-detail-list">
+                            <div v-for="field in getSubmissionFieldEntries(selectedSubmission)" :key="field.key" class="submission-detail-row">
+                                <div class="submission-detail-labels">
+                                    <strong>{{ field.label }}</strong>
+                                    <small>{{ field.key }}</small>
+                                </div>
+                                <code>{{ field.displayValue }}</code>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-body" v-else>
+                        <div class="saved-empty-state">当前没有可查看的提交记录。</div>
                     </div>
                 </div>
             </div>
