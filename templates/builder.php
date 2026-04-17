@@ -228,16 +228,69 @@
                     <div class="panel-section">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h6 class="section-title mb-0">提交记录</h6>
-                            <span class="status-pill">{{ safeSubmissionRecords.length }} 条</span>
+                            <span class="status-pill">{{ filteredSubmissionRecords.length }} / {{ safeSubmissionRecords.length }} 条</span>
                         </div>
 
                         <p class="section-desc mb-3">当前显示 {{ currentSubmissionScopeLabel }} 的最近表单提交。保存项目后，提交记录会更准确地绑定到项目 ID。</p>
 
-                        <div class="builder-mini-actions mb-3">
+                        <div class="submission-stats mb-3">
+                            <div class="submission-stat-card">
+                                <strong>{{ submissionStats.total }}</strong>
+                                <span>筛选后记录</span>
+                            </div>
+                            <div class="submission-stat-card">
+                                <strong>{{ submissionStats.today }}</strong>
+                                <span>今日新增</span>
+                            </div>
+                            <div class="submission-stat-card">
+                                <strong>{{ submissionStats.pageCount }}</strong>
+                                <span>涉及页面</span>
+                            </div>
+                        </div>
+
+                        <div class="submission-filters">
+                            <div>
+                                <label class="form-label">关键词</label>
+                                <input
+                                    v-model.trim="submissionSearchKeyword"
+                                    type="text"
+                                    class="form-control form-control-sm"
+                                    placeholder="搜索字段值、来源或页面"
+                                >
+                            </div>
+                            <div>
+                                <label class="form-label">来源</label>
+                                <select v-model="submissionSourceFilter" class="form-select form-select-sm">
+                                    <option value="all">全部来源</option>
+                                    <option v-for="source in submissionSourceOptions" :key="source" :value="source">
+                                        {{ getSubmissionSourceLabel(source) }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label">页面</label>
+                                <select v-model="submissionPageFilter" class="form-select form-select-sm">
+                                    <option value="all">全部页面</option>
+                                    <option v-for="pageLabel in submissionPageOptions" :key="pageLabel" :value="pageLabel">
+                                        {{ pageLabel }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="builder-mini-actions submission-actions mb-3">
                             <button @click="fetchSubmissions" type="button" class="btn btn-outline-secondary btn-sm" :disabled="isSubmissionListLoading">
                                 <span v-if="isSubmissionListLoading" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
                                 <i v-else class="bi bi-arrow-clockwise"></i>
                                 刷新记录
+                            </button>
+                            <button @click="exportSubmissionCsv" type="button" class="btn btn-outline-secondary btn-sm" :disabled="filteredSubmissionRecords.length === 0">
+                                <i class="bi bi-filetype-csv"></i>
+                                导出 CSV
+                            </button>
+                            <button @click="resetSubmissionFilters" type="button" class="btn btn-outline-secondary btn-sm">
+                                <i class="bi bi-funnel"></i>
+                                重置筛选
                             </button>
                             <button @click="clearSubmissions" type="button" class="btn btn-outline-danger btn-sm" :disabled="isSubmissionClearing || safeSubmissionRecords.length === 0">
                                 <span v-if="isSubmissionClearing" class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
@@ -250,8 +303,12 @@
                             还没有提交记录。给按钮配置“提交表单”动作并打开预览后，就可以把当前页面表单数据投递到本地接口。
                         </div>
 
+                        <div v-else-if="filteredSubmissionRecords.length === 0" class="saved-empty-state">
+                            当前筛选条件下没有匹配记录，可以重置筛选后再查看。
+                        </div>
+
                         <div v-else class="submission-list">
-                            <div v-for="submission in safeSubmissionRecords" :key="submission.id" class="submission-card">
+                            <div v-for="submission in filteredSubmissionRecords" :key="submission.id" class="submission-card">
                                 <div class="submission-card-head">
                                     <div>
                                         <strong>#{{ submission.id }} {{ submission.page_title || submission.page_name }}</strong>

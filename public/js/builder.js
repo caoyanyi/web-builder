@@ -957,6 +957,9 @@ createApp({
             newPageTitle: '',
             savedProjects: [],
             submissionRecords: [],
+            submissionSearchKeyword: '',
+            submissionSourceFilter: 'all',
+            submissionPageFilter: 'all',
             draftInfo: null,
             historyStack: [],
             historyIndex: -1,
@@ -1114,6 +1117,68 @@ createApp({
         },
         safeSubmissionRecords() {
             return Array.isArray(this.submissionRecords) ? this.submissionRecords : [];
+        },
+        submissionSourceOptions() {
+            return Array.from(new Set(
+                this.safeSubmissionRecords
+                    .map((item) => item && item.source ? String(item.source) : '')
+                    .filter(Boolean)
+            ));
+        },
+        submissionPageOptions() {
+            return Array.from(new Set(
+                this.safeSubmissionRecords
+                    .map((item) => item && (item.page_title || item.page_name) ? String(item.page_title || item.page_name) : '')
+                    .filter(Boolean)
+            ));
+        },
+        filteredSubmissionRecords() {
+            const keyword = String(this.submissionSearchKeyword || '').trim().toLowerCase();
+
+            return this.safeSubmissionRecords.filter((submission) => {
+                const source = String(submission.source || '');
+                const pageLabel = String(submission.page_title || submission.page_name || '');
+
+                if (this.submissionSourceFilter !== 'all' && source !== this.submissionSourceFilter) {
+                    return false;
+                }
+
+                if (this.submissionPageFilter !== 'all' && pageLabel !== this.submissionPageFilter) {
+                    return false;
+                }
+
+                if (!keyword) {
+                    return true;
+                }
+
+                const fieldEntries = this.getSubmissionFieldEntries(submission)
+                    .map(([fieldKey, fieldValue]) => `${fieldKey} ${Array.isArray(fieldValue) ? fieldValue.join(' ') : fieldValue}`)
+                    .join(' ');
+                const haystack = [
+                    submission.id,
+                    submission.project_name,
+                    source,
+                    pageLabel,
+                    fieldEntries
+                ].join(' ').toLowerCase();
+
+                return haystack.includes(keyword);
+            });
+        },
+        submissionStats() {
+            const records = this.filteredSubmissionRecords;
+            const todayKey = new Date().toISOString().slice(0, 10);
+            const todayCount = records.filter((submission) => {
+                const rawDate = submission.submitted_at || submission.created_at || '';
+                return String(rawDate).slice(0, 10) === todayKey;
+            }).length;
+            const pageCount = new Set(records.map((submission) => submission.page_name || submission.page_title || '')).size;
+
+            return {
+                total: records.length,
+                today: todayCount,
+                pageCount
+            };
         },
         pageCount() {
             return this.safePages.length;
@@ -1686,9 +1751,18 @@ createApp({
         formatSubmissionMeta(submission) {
             const submittedAt = this.formatDateTime(submission.submitted_at || submission.created_at || '');
             const pageTitle = submission.page_title || submission.page_name || '未命名页面';
-            const source = submission.source || 'unknown';
+            const source = this.getSubmissionSourceLabel(submission.source || 'unknown');
 
             return `${submittedAt} · ${pageTitle} · ${source}`;
+        },
+        getSubmissionSourceLabel(source) {
+            const sourceMap = {
+                'builder-preview': '构建器预览',
+                h5: 'H5 页面',
+                wechat: '微信小程序'
+            };
+
+            return sourceMap[source] || source || 'unknown';
         },
         getSubmissionFieldEntries(submission) {
             const formData = submission && submission.form_data && typeof submission.form_data === 'object'
@@ -1696,6 +1770,51 @@ createApp({
                 : {};
 
             return Object.entries(formData);
+        },
+        resetSubmissionFilters() {
+            this.submissionSearchKeyword = '';
+            this.submissionSourceFilter = 'all';
+            this.submissionPageFilter = 'all';
+        },
+        escapeCsvValue(value) {
+            const normalized = Array.isArray(value) ? value.join(', ') : String(value ?? '');
+            const escaped = normalized.replace(/"/g, '""');
+            return `"${escaped}"`;
+        },
+        exportSubmissionCsv() {
+            if (this.filteredSubmissionRecords.length === 0) {
+                this.setStatus('当前没有可导出的提交记录。', 'warning');
+                return;
+            }
+
+            const dynamicFieldKeys = Array.from(new Set(
+                this.filteredSubmissionRecords.flatMap((submission) => this.getSubmissionFieldEntries(submission).map(([fieldKey]) => fieldKey))
+            ));
+            const headers = ['id', 'project_name', 'project_type', 'page_name', 'page_title', 'source', 'submitted_at', ...dynamicFieldKeys];
+            const rows = this.filteredSubmissionRecords.map((submission) => {
+                const formData = submission && submission.form_data && typeof submission.form_data === 'object'
+                    ? submission.form_data
+                    : {};
+                const row = {
+                    id: submission.id,
+                    project_name: submission.project_name || '',
+                    project_type: submission.project_type || '',
+                    page_name: submission.page_name || '',
+                    page_title: submission.page_title || '',
+                    source: submission.source || '',
+                    submitted_at: submission.submitted_at || submission.created_at || ''
+                };
+
+                dynamicFieldKeys.forEach((fieldKey) => {
+                    row[fieldKey] = Object.prototype.hasOwnProperty.call(formData, fieldKey) ? formData[fieldKey] : '';
+                });
+
+                return headers.map((header) => this.escapeCsvValue(row[header])).join(',');
+            });
+            const csvContent = [headers.join(','), ...rows].join('\n');
+            const filename = `${this.normalizePageName(this.projectName || 'submission-records', 1)}-submissions.csv`;
+            downloadTextFile(filename, csvContent);
+            this.setStatus(`已导出 ${this.filteredSubmissionRecords.length} 条提交记录。`, 'success');
         },
         getNodeByPath(root, path) {
             let current = root;
