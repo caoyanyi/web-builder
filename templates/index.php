@@ -99,7 +99,7 @@
                             <h1>少一点模板味，多一点真正能落地的构建体验。</h1>
                             <p class="hero-lead">
                                 从首屏、表单到多页面流程，你可以直接拖拽组件、配置主题、保存草稿，
-                                然后导出 H5 或微信小程序代码。首页不只是在“介绍工具”，而是在告诉用户这套工具究竟能帮他把什么事情做完。
+                                然后导出 H5 或微信小程序代码。首页不只是介绍工具，更是在告诉用户这套工具究竟能帮他把什么事情做完。
                             </p>
                             <div class="hero-actions">
                                 <a href="/builder" class="btn btn-lg btn-hero-primary">
@@ -403,7 +403,7 @@
                                     <div class="recent-featured-panel">
                                         <span class="recent-featured-label">最近更新</span>
                                         <strong><?php echo htmlspecialchars($featuredProject['updated_at'], ENT_QUOTES, 'UTF-8'); ?></strong>
-                                        <p>首页已经可以承担“继续上次工作”的入口角色，而不只是展示能力。</p>
+                                        <p>首页已经可以承担继续上次工作的入口角色，而不只是展示能力。</p>
                                     </div>
                                 </div>
                                 <div class="recent-featured-actions">
@@ -495,15 +495,16 @@
                     <div class="about-shell">
                         <div>
                             <span class="section-tag">产品说明</span>
-                            <h2>这次首页优化，核心不是“更花”，而是“更像一个有人在认真打磨的产品”。</h2>
+                            <h2>这次首页优化，核心不是更花，而是更像一个有人在认真打磨的产品。</h2>
                         </div>
                         <div class="about-copy">
                             <p>
-                                之前的首页信息虽然完整，但视觉和文案都过于平均，容易让人一眼判断为“通用 AI 模板页”。
+                                之前的首页信息虽然完整，但视觉和文案都过于平均，容易让人一眼判断为通用模板页。
                                 现在这一版把重点收束到构建流程、真实场景和核心能力上，页面会更像一个有明确用户对象的产品入口。
                             </p>
                             <p>
-                                这次又进一步加上了模板参考和最近项目直达，让首页不只是一个“看起来不错”的壳，而是开始承担起真正的入口职责。
+                                如果后面还想继续往前走，我们还可以把首页与构建器再打通一步，比如加入真实案例封面、
+                                模板入口和最近项目直达，让首页从好看变成真正有用。
                             </p>
                         </div>
                     </div>
